@@ -270,6 +270,29 @@ a { color: var(--navix-blue); }
 }
 body.navix-offline .offline-banner { display: block; }
 
+.sync-banner {
+  display: none;
+  background: var(--navix-blue);
+  color: #fff;
+  text-align: center;
+  padding: 0.45rem 1rem;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+.sync-banner.show { display: block; }
+
+.offline-data-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: #fff3e0;
+  color: #7a4a00;
+  border-radius: 999px;
+  padding: 0.25rem 0.7rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
 /* ---------------------------------------------------------------------- */
 /* Buttons                                                                  */
 /* ---------------------------------------------------------------------- */
@@ -337,7 +360,7 @@ body.navix-offline .offline-banner { display: block; }
 .status-pill.available, .status-pill.online, .status-pill.resolved, .status-pill.open, .status-pill.reunited { background: #e3f7ea; color: var(--navix-success); }
 .status-pill.responding, .status-pill.responder_assigned, .status-pill.acknowledged, .status-pill.possible_match { background: #fff3e0; color: #b3660a; }
 .status-pill.busy, .status-pill.new, .status-pill.missing { background: #fde8e8; color: var(--navix-danger); }
-.status-pill.offline, .status-pill.closed, .status-pill.found, .status-pill.stale { background: #ececf1; color: var(--navix-text-muted); }
+.status-pill.offline, .status-pill.closed, .status-pill.found, .status-pill.stale, .status-pill.cancelled, .status-pill.duplicate { background: #ececf1; color: var(--navix-text-muted); }
 
 /* ---------------------------------------------------------------------- */
 /* Admin / control-room shell                                              */

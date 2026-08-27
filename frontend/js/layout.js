@@ -10,9 +10,9 @@ const NaviXLayout = (() => {
   const PUBLIC_LINKS = [
     { href: "/", key: "nav_home", label: "Home" },
     { href: "/find-help", key: "nav_find_help", label: "Find Help" },
-    { href: "/navigation", key: "nav_navigation", label: "Navigation" },
-    { href: "/lost-person", key: "nav_lost_person", label: "Lost Person" },
+    { href: "/navigation", key: "nav_navigation", label: "Route" },
     { href: "/alerts", key: "nav_alerts", label: "Alerts" },
+    { href: "/lost-person", key: "nav_lost_person", label: "Lost Person" },
   ];
 
   function renderPublicNavbar(activePath) {
@@ -43,7 +43,8 @@ const NaviXLayout = (() => {
         </div>
       </div>
     </nav>
-    <div class="offline-banner" data-i18n="offline_active">Offline Mode Active</div>
+    <div class="offline-banner" id="navix-offline-banner" data-i18n="offline_active">Offline Mode Active</div>
+    <div id="navix-sync-banner" class="sync-banner"></div>
     <div id="navix-critical-banner"></div>`;
 
     const langSelect = document.getElementById("navixLangSwitch");
@@ -53,6 +54,20 @@ const NaviXLayout = (() => {
     }
 
     loadCriticalBanner();
+    wireSyncBanner();
+  }
+
+  function wireSyncBanner() {
+    const el = document.getElementById("navix-sync-banner");
+    if (!el) return;
+    window.addEventListener("navix:sync-status", (e) => {
+      const { phase, detail } = e.detail || {};
+      el.textContent = detail || "";
+      el.classList.toggle("show", phase === "syncing" || phase === "done");
+      if (phase === "done") {
+        setTimeout(() => el.classList.remove("show"), 3000);
+      }
+    });
   }
 
   async function loadCriticalBanner() {
@@ -94,9 +109,13 @@ const NaviXLayout = (() => {
     { href: "/admin/emergencies", label: "Emergencies", icon: "🆘" },
     { href: "/admin/volunteers", label: "Volunteers", icon: "🧭" },
     { href: "/admin/devices", label: "Devices", icon: "📡" },
+    { href: "/admin/gateways", label: "Gateways", icon: "📶" },
+    { href: "/admin/network", label: "Field Network", icon: "🛰️" },
     { href: "/admin/facilities", label: "Facilities", icon: "🏥" },
+    { href: "/admin/routes", label: "Routes", icon: "🧭" },
     { href: "/admin/lost-persons", label: "Lost Persons", icon: "🔍" },
     { href: "/admin/announcements", label: "Announcements", icon: "📢" },
+    { href: "/admin/authorities", label: "Authorities", icon: "🏛️" },
     { href: "/admin/analytics", label: "Analytics", icon: "📊" },
     { href: "/developer/device-simulator", label: "Device Simulator", icon: "🛠️" },
   ];

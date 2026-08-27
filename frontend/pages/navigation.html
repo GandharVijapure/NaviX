@@ -17,6 +17,9 @@
   <div class="container-fluid py-3">
     <div class="row g-3">
       <div class="col-lg-8">
+        <div id="mapOfflineNote" class="offline-data-note mb-2" style="display:none;">
+          📴 Offline — live map tiles need a connection. Arrow guidance below still works from downloaded data.
+        </div>
         <div id="map" class="navix-map tall"></div>
       </div>
       <div class="col-lg-4">
@@ -27,8 +30,16 @@
           <div class="next-turn" id="dirNextTurn"></div>
         </div>
 
-        <div class="navix-card p-3">
-          <h6 class="fw-bold mb-2">Select a facility</h6>
+        <ul class="nav nav-pills mb-2" id="modeTabs">
+          <li class="nav-item"><button class="nav-link active" data-mode="facility">Nearby Facilities</button></li>
+          <li class="nav-item"><button class="nav-link" data-mode="route">Saved Route</button></li>
+        </ul>
+
+        <div class="navix-card p-3" id="facilityModePanel">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="fw-bold mb-0">Select a facility</h6>
+            <span id="facilityOfflineNote" class="offline-data-note" style="display:none; font-size:0.72rem;"></span>
+          </div>
           <div class="d-flex gap-2 flex-wrap mb-2" id="typeFilters">
             <button class="btn btn-sm btn-navix-outline active" data-type="" style="min-height:36px;">All</button>
             <button class="btn btn-sm btn-navix-outline" data-type="medical" style="min-height:36px;">🚑</button>
@@ -38,6 +49,18 @@
             <button class="btn btn-sm btn-navix-outline" data-type="help_centre" style="min-height:36px;">🛈</button>
           </div>
           <div id="facilityPicker" style="max-height:46vh; overflow-y:auto;" class="d-flex flex-column gap-2"></div>
+        </div>
+
+        <div class="navix-card p-3" id="routeModePanel" style="display:none;">
+          <h6 class="fw-bold mb-2">Pre-stored Wari routes</h6>
+          <p class="text-navix-muted small">
+            Routes are set up by administrators ahead of time. Download one while you have signal, then follow the
+            arrow above with zero network needed.
+          </p>
+          <select id="routeSelect" class="form-select mb-2"></select>
+          <button id="downloadRouteBtn" class="btn btn-navix-outline w-100 mb-2">⬇ Download for Offline</button>
+          <button id="startRouteBtn" class="btn btn-navix-primary w-100" disabled>▶ Start Guidance</button>
+          <div id="routeStatus" class="text-navix-muted small mt-2"></div>
         </div>
       </div>
     </div>
@@ -54,6 +77,9 @@
   <script src="/js/geo.js"></script>
   <script src="/js/map.js"></script>
   <script src="/js/ws.js"></script>
+  <script src="/js/offline-db.js"></script>
+  <script src="/js/sync-manager.js"></script>
+  <script src="/js/navigation-engine.js"></script>
   <script src="/js/pwa-register.js"></script>
   <script>
     NaviXLayout.renderPublicNavbar("/navigation");
@@ -63,27 +89,51 @@
     const params = new URLSearchParams(window.location.search);
     let currentType = params.get("type") || "";
     const requestedFacilityId = params.get("facility") ? Number(params.get("facility")) : null;
+    const ARROWS = { N: "↑", NE: "↗", E: "→", SE: "↘", S: "↓", SW: "↙", W: "←", NW: "↖" };
 
     let map, userMarker, userLoc, facilityMarkers = [], selectedFacility = null, directionsTimer = null;
+    let routeWatchId = null, activeRouteWaypoints = null;
+
+    function updateOfflineNotes() {
+      document.getElementById("mapOfflineNote").style.display = navigator.onLine ? "none" : "block";
+    }
+    window.addEventListener("online", updateOfflineNotes);
+    window.addEventListener("offline", updateOfflineNotes);
 
     async function init() {
-      userLoc = await NaviXGeo.getCurrentPosition();
+      updateOfflineNotes();
+      userLoc = (await NaviXGeo.getCurrentPosition()) || NaviXGeo.FALLBACK;
       map = NaviXMap.initMap("map", userLoc, 15);
       userMarker = L.marker([userLoc.lat, userLoc.lon], { icon: NaviXMap.divIcon("user", { size: 30 }) })
         .addTo(map)
         .bindPopup("You are here");
       await loadFacilities();
+      await loadRouteOptions();
     }
 
+    // ---------------------------------------------------------------------
+    // Facility mode (nearest-facility, online with offline cache fallback)
+    // ---------------------------------------------------------------------
     async function loadFacilities() {
       const query = new URLSearchParams({ lat: userLoc.lat, lon: userLoc.lon });
       if (currentType) query.set("type", currentType);
       let facilities = [];
+      const noteEl = document.getElementById("facilityOfflineNote");
       try {
         facilities = await NaviXApi.get(`/api/facilities/nearby?${query.toString()}`);
+        noteEl.style.display = "none";
+        NaviXDB.saveFacilities(facilities).catch(() => {});
       } catch (e) {
-        document.getElementById("facilityPicker").innerHTML = `<p class="text-navix-muted small">Offline — can't load facilities right now.</p>`;
-        return;
+        const cached = await NaviXDB.getAll("facilities").catch(() => []);
+        if (!cached.length) {
+          document.getElementById("facilityPicker").innerHTML = `<p class="text-navix-muted small">Offline — no cached facilities on this device yet.</p>`;
+          return;
+        }
+        facilities = (currentType ? cached.filter((f) => f.type === currentType) : cached)
+          .map((f) => ({ ...f, distance_km: NaviXNavEngine.haversineKm(userLoc.lat, userLoc.lon, f.latitude, f.longitude) }))
+          .sort((a, b) => a.distance_km - b.distance_km);
+        noteEl.textContent = "📴 Showing cached facilities";
+        noteEl.style.display = "inline-flex";
       }
 
       facilityMarkers.forEach((m) => map.removeLayer(m));
@@ -115,10 +165,13 @@
         if (requestedFacilityId && f.id === requestedFacilityId) selectFacility(f, marker);
       });
 
-      if (!selectedFacility && facilities.length) selectFacility(facilities[0], facilityMarkers[0]);
+      if (!selectedFacility && facilities.length && document.querySelector('[data-mode="facility"]').classList.contains("active")) {
+        selectFacility(facilities[0], facilityMarkers[0]);
+      }
     }
 
     function selectFacility(facility, marker) {
+      stopRouteGuidance();
       selectedFacility = facility;
       map.setView([facility.latitude, facility.longitude], 16);
       if (marker) marker.openPopup();
@@ -133,16 +186,23 @@
         const dir = await NaviXApi.get(
           `/api/navigation/to-facility/${selectedFacility.id}?user_lat=${userLoc.lat}&user_lon=${userLoc.lon}`
         );
-        document.getElementById("directionPanel").style.display = "block";
-        const arrows = { N: "↑", NE: "↗", E: "→", SE: "↘", S: "↓", SW: "↙", W: "←", NW: "↖" };
-        document.getElementById("dirArrow").textContent = arrows[dir.compass_direction] || "↑";
-        document.getElementById("dirInstruction").textContent = dir.turn_hint;
-        document.getElementById("dirDistance").textContent =
-          dir.distance_m < 1000 ? `${Math.round(dir.distance_m)} m` : `${dir.distance_km.toFixed(1)} km`;
-        document.getElementById("dirNextTurn").textContent = `Heading ${dir.compass_direction} · ~${dir.estimated_walk_minutes} min walk to ${selectedFacility.name}`;
+        renderDirectionPanel(dir.compass_direction, dir.turn_hint, dir.distance_m, dir.distance_km,
+          `Heading ${dir.compass_direction} · ~${dir.estimated_walk_minutes} min walk to ${selectedFacility.name}`);
       } catch (e) {
-        /* offline -- keep last known panel state */
+        // Offline -- compute the same bearing/distance client-side instead
+        // of just freezing the panel (spec section 65 math mirrored in JS).
+        const dir = NaviXNavEngine.directionsTo(userLoc.lat, userLoc.lon, selectedFacility.latitude, selectedFacility.longitude);
+        renderDirectionPanel(dir.compass_direction, "Continue Straight", dir.distance_m, dir.distance_km,
+          `📴 Offline estimate · Heading ${dir.compass_direction} to ${selectedFacility.name}`);
       }
+    }
+
+    function renderDirectionPanel(compass, instruction, distanceM, distanceKm, nextLine) {
+      document.getElementById("directionPanel").style.display = "block";
+      document.getElementById("dirArrow").textContent = ARROWS[compass] || "↑";
+      document.getElementById("dirInstruction").textContent = instruction;
+      document.getElementById("dirDistance").textContent = distanceM < 1000 ? `${Math.round(distanceM)} m` : `${distanceKm.toFixed(1)} km`;
+      document.getElementById("dirNextTurn").textContent = nextLine;
     }
 
     document.getElementById("typeFilters").addEventListener("click", (e) => {
@@ -155,6 +215,118 @@
     });
 
     NaviXSocket.on("facility_update", loadFacilities);
+
+    // ---------------------------------------------------------------------
+    // Route mode (pre-stored waypoints, works fully offline once downloaded)
+    // ---------------------------------------------------------------------
+    async function loadRouteOptions() {
+      const select = document.getElementById("routeSelect");
+      let summaries = [];
+      try {
+        summaries = await NaviXApi.get("/api/routes");
+        await NaviXDB.setMetadata("route_summaries", summaries);
+      } catch (e) {
+        summaries = (await NaviXDB.getMetadata("route_summaries")) || [];
+      }
+      const downloaded = await NaviXDB.getAll("route_data");
+      const downloadedIds = new Set(downloaded.map((r) => r.id));
+
+      select.innerHTML = summaries
+        .map((r) => `<option value="${r.id}">${r.name}${downloadedIds.has(r.id) ? " (downloaded)" : ""}</option>`)
+        .join("") || `<option disabled>No routes available</option>`;
+
+      document.getElementById("startRouteBtn").disabled = !downloadedIds.has(Number(select.value));
+      select.addEventListener("change", () => {
+        document.getElementById("startRouteBtn").disabled = !downloadedIds.has(Number(select.value));
+        document.getElementById("routeStatus").textContent = "";
+      });
+    }
+
+    document.getElementById("downloadRouteBtn").addEventListener("click", async () => {
+      const routeId = Number(document.getElementById("routeSelect").value);
+      if (!routeId) return;
+      const statusEl = document.getElementById("routeStatus");
+      try {
+        const route = await NaviXApi.get(`/api/routes/${routeId}/download`);
+        await NaviXDB.put("route_data", route);
+        statusEl.textContent = `✅ "${route.name}" downloaded (${route.waypoints.length} waypoints, v${route.version}). Ready for offline use.`;
+        document.getElementById("startRouteBtn").disabled = false;
+      } catch (e) {
+        statusEl.textContent = "Could not download route — check your connection and try again.";
+      }
+    });
+
+    document.getElementById("startRouteBtn").addEventListener("click", async () => {
+      const routeId = Number(document.getElementById("routeSelect").value);
+      const route = await NaviXDB.get("route_data", routeId);
+      if (!route) return;
+      startRouteGuidance(route);
+    });
+
+    function startRouteGuidance(route) {
+      selectedFacility = null;
+      activeRouteWaypoints = route.waypoints.slice().sort((a, b) => a.sequence - b.sequence);
+      document.getElementById("routeStatus").textContent = `Following "${route.name}" — ${activeRouteWaypoints.length} waypoints.`;
+
+      // Draw the route line + waypoint markers once.
+      const latlngs = activeRouteWaypoints.map((w) => [w.latitude, w.longitude]);
+      L.polyline(latlngs, { color: "#1e88e5", weight: 4, dashArray: "6 8" }).addTo(map);
+      activeRouteWaypoints.forEach((w) => {
+        L.circleMarker([w.latitude, w.longitude], { radius: 6, color: "#0b2545", fillColor: "#ff6b35", fillOpacity: 1 })
+          .addTo(map)
+          .bindPopup(`${w.landmark || "Waypoint"} — ${w.instruction || ""}`);
+      });
+      map.fitBounds(latlngs, { padding: [30, 30] });
+
+      if (routeWatchId !== null) navigator.geolocation.clearWatch(routeWatchId);
+      updateRouteGuidance(userLoc.lat, userLoc.lon);
+      if (navigator.geolocation) {
+        routeWatchId = navigator.geolocation.watchPosition(
+          (pos) => {
+            userLoc = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+            NaviXGeo.save(userLoc.lat, userLoc.lon);
+            updateRouteGuidance(userLoc.lat, userLoc.lon);
+          },
+          () => {},
+          { enableHighAccuracy: true, maximumAge: 5000 }
+        );
+      }
+    }
+
+    function updateRouteGuidance(lat, lon) {
+      if (!activeRouteWaypoints) return;
+      const guidance = NaviXNavEngine.guidanceAlongRoute(lat, lon, activeRouteWaypoints);
+      if (!guidance) return;
+      const nextLine = guidance.is_final
+        ? "You have reached the end of this route."
+        : `Next: ${guidance.next_landmark || "onward"} · Waypoint ${guidance.waypoint_index + 1}/${guidance.waypoint_count}`;
+      renderDirectionPanel(guidance.compass_direction, guidance.instruction, guidance.distance_m, guidance.distance_km, nextLine);
+    }
+
+    function stopRouteGuidance() {
+      if (routeWatchId !== null) {
+        navigator.geolocation.clearWatch(routeWatchId);
+        routeWatchId = null;
+      }
+      activeRouteWaypoints = null;
+    }
+
+    document.getElementById("modeTabs").addEventListener("click", (e) => {
+      const btn = e.target.closest("button[data-mode]");
+      if (!btn) return;
+      document.querySelectorAll("#modeTabs .nav-link").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      const mode = btn.getAttribute("data-mode");
+      document.getElementById("facilityModePanel").style.display = mode === "facility" ? "block" : "none";
+      document.getElementById("routeModePanel").style.display = mode === "route" ? "block" : "none";
+      if (mode === "facility") {
+        stopRouteGuidance();
+        document.getElementById("directionPanel").style.display = selectedFacility ? "block" : "none";
+      } else {
+        selectedFacility = null;
+        if (directionsTimer) clearInterval(directionsTimer);
+      }
+    });
 
     init();
   </script>

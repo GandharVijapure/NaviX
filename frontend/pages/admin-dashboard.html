@@ -17,11 +17,15 @@
 
       <div class="row g-3 mb-3">
         <div class="col-6 col-md-4 col-xl-2"><div class="stat-card danger"><div class="stat-value" id="statActiveSos">–</div><div class="stat-label">Active SOS</div></div></div>
+        <div class="col-6 col-md-4 col-xl-2"><div class="stat-card danger"><div class="stat-value" id="statCriticalSos">–</div><div class="stat-label">Critical SOS</div></div></div>
         <div class="col-6 col-md-4 col-xl-2"><div class="stat-card success"><div class="stat-value" id="statVolunteers">–</div><div class="stat-label">Volunteers Online</div></div></div>
         <div class="col-6 col-md-4 col-xl-2"><div class="stat-card"><div class="stat-value" id="statDevices">–</div><div class="stat-label">Devices Online</div></div></div>
+        <div class="col-6 col-md-4 col-xl-2"><div class="stat-card"><div class="stat-value" id="statLoraNodes">–</div><div class="stat-label">LoRa Nodes Online</div></div></div>
+        <div class="col-6 col-md-4 col-xl-2"><div class="stat-card"><div class="stat-value" id="statGateways">–</div><div class="stat-label">Gateways Online</div></div></div>
         <div class="col-6 col-md-4 col-xl-2"><div class="stat-card orange"><div class="stat-value" id="statMedical">–</div><div class="stat-label">Medical Cases</div></div></div>
         <div class="col-6 col-md-4 col-xl-2"><div class="stat-card"><div class="stat-value" id="statMissing">–</div><div class="stat-label">Missing Reports</div></div></div>
         <div class="col-6 col-md-4 col-xl-2"><div class="stat-card"><div class="stat-value" id="statAlerts">–</div><div class="stat-label">Active Alerts</div></div></div>
+        <div class="col-6 col-md-4 col-xl-2"><div class="stat-card success"><div class="stat-value" id="statOpenFacilities">–</div><div class="stat-label">Open Facilities</div></div></div>
       </div>
 
       <div class="navix-card p-2 mb-3">
@@ -65,11 +69,15 @@
     async function loadStats() {
       const stats = await NaviXApi.get("/api/admin/stats");
       document.getElementById("statActiveSos").textContent = stats.active_sos;
+      document.getElementById("statCriticalSos").textContent = stats.critical_sos;
       document.getElementById("statVolunteers").textContent = stats.volunteers_online;
       document.getElementById("statDevices").textContent = stats.devices_online;
+      document.getElementById("statLoraNodes").textContent = stats.lora_nodes_online;
+      document.getElementById("statGateways").textContent = stats.gateways_online;
       document.getElementById("statMedical").textContent = stats.medical_cases;
       document.getElementById("statMissing").textContent = stats.missing_person_reports;
       document.getElementById("statAlerts").textContent = stats.active_alerts;
+      document.getElementById("statOpenFacilities").textContent = stats.open_facilities;
     }
 
     function timeAgo(iso) {
@@ -120,13 +128,23 @@
       });
     }
 
+    async function loadGateways() {
+      const gateways = await NaviXApi.get("/api/gateways");
+      gateways.forEach((g) => {
+        if (g.latitude == null) return;
+        L.marker([g.latitude, g.longitude], { icon: NaviXMap.divIcon("gateway", { size: 30 }) })
+          .addTo(map)
+          .bindPopup(`${g.name || g.gateway_id} · <span class="status-pill ${g.is_stale ? "offline" : g.status}">${g.is_stale ? "offline" : g.status}</span>`);
+      });
+    }
+
     async function refreshAll() {
       await Promise.all([loadStats(), loadEmergencies()]);
     }
 
     async function init() {
       map = NaviXMap.initMap("map", { lat: 18.5204, lon: 73.8567 }, 14);
-      await Promise.all([loadFacilities(), loadVolunteers()]);
+      await Promise.all([loadFacilities(), loadVolunteers(), loadGateways()]);
       await refreshAll();
     }
 
@@ -135,8 +153,9 @@
 
     NaviXSocket.on("sos_created", refreshAll);
     NaviXSocket.on("emergency_updated", refreshAll);
-    NaviXSocket.on("volunteer_update", (v) => { upsertVolunteerMarker(v); loadStats(); });
-    NaviXSocket.on("device_update", loadStats);
+    NaviXSocket.on("volunteer_updated", (v) => { upsertVolunteerMarker(v); loadStats(); });
+    NaviXSocket.on("device_updated", loadStats);
+    NaviXSocket.on("gateway_updated", loadStats);
 
     init();
     setInterval(refreshAll, 20000);

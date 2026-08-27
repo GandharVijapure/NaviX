@@ -8,12 +8,10 @@ DATABASE_URL environment variable (e.g.
 project imports sqlite3 directly or relies on SQLite-only SQL, so the swap
 is a config change, not a rewrite.
 """
-import os
-
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./navix.db")
+from .config import DATABASE_URL
 
 # check_same_thread is only needed for SQLite (FastAPI talks to the DB from
 # multiple threads/async tasks). PostgreSQL/MySQL don't need this arg.

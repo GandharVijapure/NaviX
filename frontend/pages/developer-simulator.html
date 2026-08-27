@@ -12,6 +12,7 @@
   <nav class="navbar navix-navbar">
     <div class="container-fluid px-3 px-lg-4">
       <a class="navbar-brand" href="/">NaviX<small>Developer / Hardware Simulator</small></a>
+      <a href="/developer/architecture" class="btn btn-sm btn-volunteer" style="min-height:38px;">🗺️ Architecture</a>
       <a href="/admin/dashboard" class="btn btn-sm btn-navix-outline" style="min-height:38px;">← Control Room</a>
     </div>
   </nav>
@@ -101,6 +102,59 @@
     </div>
 
     <div class="navix-card p-3 mt-4">
+      <h5 class="fw-bold mb-1">📡 LoRa Multi-Hop Gateway Simulation</h5>
+      <p class="text-navix-muted small mb-3">
+        Simulates the application-level multi-hop path a real mesh would relay:
+        <strong>Sub-Volunteer → LoRa Mesh → Intermediate Node(s) → Main Gateway → Internet → NaviX Backend</strong>.
+        This calls <code>POST /api/gateway/messages</code> — the same production-style endpoint a real
+        ESP32 base station will use, protected by a gateway API key (documented demo key below; rotate
+        <code>NAVIX_GATEWAY_API_KEY</code> per deployment). Duplicate <code>message_id</code>s are rejected
+        server-side, demonstrating mesh dedup.
+      </p>
+      <button id="multiHopDemoBtn" class="btn btn-navix-danger mb-3">
+        ⚡ Send Demo Medical SOS: NODE-05 → NODE-04 → NODE-03 → GW-01
+      </button>
+
+      <details class="mb-2">
+        <summary class="fw-bold" style="cursor:pointer;">Manual gateway message</summary>
+        <form id="gatewayForm" class="mt-2">
+          <div class="row g-2 mb-2">
+            <div class="col-6"><input name="gateway_id" required class="form-control" placeholder="Gateway ID" value="GW-01" /></div>
+            <div class="col-6"><input name="origin_node" required class="form-control" placeholder="Origin node" value="NODE-04" /></div>
+          </div>
+          <div class="row g-2 mb-2">
+            <div class="col-6"><input name="previous_hop" class="form-control" placeholder="Previous hop (optional)" value="NODE-03" /></div>
+            <div class="col-6"><input name="hop_count" type="number" min="0" class="form-control" placeholder="Hop count" value="2" /></div>
+          </div>
+          <div class="row g-2 mb-2">
+            <div class="col-6"><input name="rssi" type="number" class="form-control" placeholder="RSSI (dBm)" value="-91" /></div>
+            <div class="col-6"><input name="snr" type="number" step="any" class="form-control" placeholder="SNR (dB)" value="7.2" /></div>
+          </div>
+          <div class="mb-2">
+            <select name="emergency_type" class="form-select">
+              <option value="medical">Medical</option>
+              <option value="police">Police</option>
+              <option value="lost_person">Lost Person</option>
+              <option value="crowd">Crowd</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div class="row g-2 mb-2">
+            <div class="col-6"><input name="latitude" type="number" step="any" required class="form-control" placeholder="Latitude" value="18.523" /></div>
+            <div class="col-6"><input name="longitude" type="number" step="any" required class="form-control" placeholder="Longitude" value="73.857" /></div>
+          </div>
+          <div class="mb-2"><input name="description" class="form-control" placeholder="Description" value="Medical assistance needed" /></div>
+          <div class="mb-2"><input name="gateway_key" class="form-control" placeholder="X-NaviX-Gateway-Key" value="navix-demo-gateway-key" /></div>
+          <button class="btn btn-navix-primary w-100">Send Gateway Message</button>
+        </form>
+      </details>
+
+      <div class="mt-2">
+        <button id="gatewayHeartbeatBtn" class="btn btn-navix-outline btn-sm" style="min-height:36px;">💓 Send Gateway Heartbeat (GW-01)</button>
+      </div>
+    </div>
+
+    <div class="navix-card p-3 mt-4">
       <h6 class="fw-bold mb-2">Activity Log</h6>
       <div id="log" class="small" style="max-height:240px; overflow-y:auto; font-family: monospace;"></div>
     </div>
@@ -139,6 +193,85 @@
     submitForm(document.getElementById("sosForm"), "/api/device/sos");
     submitForm(document.getElementById("statusForm"), "/api/device/status");
     submitForm(document.getElementById("heartbeatForm"), "/api/device/heartbeat");
+
+    async function postGatewayMessage(body, gatewayKey) {
+      const res = await fetch("/api/gateway/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-NaviX-Gateway-Key": gatewayKey },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || res.statusText);
+      return data;
+    }
+
+    document.getElementById("multiHopDemoBtn").addEventListener("click", async () => {
+      const messageId = `NODE04-${Date.now()}`;
+      const body = {
+        gateway_id: "GW-01",
+        message_id: messageId,
+        message_type: "SOS",
+        origin_node: "NODE-04",
+        previous_hop: "NODE-03",
+        hop_count: 2,
+        rssi: -91,
+        snr: 7.2,
+        payload: {
+          emergency_type: "medical",
+          latitude: 18.5235,
+          longitude: 73.8571,
+          description: "Demo: pilgrim collapsed near checkpoint (relayed NODE-05 → NODE-04 → NODE-03 → GW-01)",
+        },
+      };
+      try {
+        const result = await postGatewayMessage(body, "navix-demo-gateway-key");
+        logLine(`Multi-hop SOS relayed → emergency #${result.emergency_id} created (message ${messageId})`);
+      } catch (err) {
+        logLine(`Multi-hop demo failed: ${err.message}`, false);
+      }
+    });
+
+    document.getElementById("gatewayForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const gatewayKey = fd.get("gateway_key");
+      const body = {
+        gateway_id: fd.get("gateway_id"),
+        message_id: `${fd.get("origin_node")}-${Date.now()}`,
+        message_type: "SOS",
+        origin_node: fd.get("origin_node"),
+        previous_hop: fd.get("previous_hop") || null,
+        hop_count: parseInt(fd.get("hop_count") || "0", 10),
+        rssi: fd.get("rssi") ? parseInt(fd.get("rssi"), 10) : null,
+        snr: fd.get("snr") ? parseFloat(fd.get("snr")) : null,
+        payload: {
+          emergency_type: fd.get("emergency_type"),
+          latitude: parseFloat(fd.get("latitude")),
+          longitude: parseFloat(fd.get("longitude")),
+          description: fd.get("description") || null,
+        },
+      };
+      try {
+        const result = await postGatewayMessage(body, gatewayKey);
+        logLine(`POST /api/gateway/messages → OK: ${JSON.stringify(result)}`);
+      } catch (err) {
+        logLine(`POST /api/gateway/messages → FAILED: ${err.message}`, false);
+      }
+    });
+
+    document.getElementById("gatewayHeartbeatBtn").addEventListener("click", async () => {
+      try {
+        const res = await fetch("/api/gateway/heartbeat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-NaviX-Gateway-Key": "navix-demo-gateway-key" },
+          body: JSON.stringify({ gateway_id: "GW-01", internet_status: "online", bluetooth_status: "connected", battery: 90 }),
+        });
+        const data = await res.json();
+        logLine(`Gateway heartbeat → OK: ${JSON.stringify(data)}`);
+      } catch (err) {
+        logLine(`Gateway heartbeat → FAILED: ${err.message}`, false);
+      }
+    });
 
     async function refreshSimStatus() {
       try {

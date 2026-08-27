@@ -77,6 +77,8 @@
   <script src="/js/i18n.js"></script>
   <script src="/js/layout.js"></script>
   <script src="/js/geo.js"></script>
+  <script src="/js/offline-db.js"></script>
+  <script src="/js/sync-manager.js"></script>
   <script src="/js/pwa-register.js"></script>
   <script>
     NaviXLayout.renderPublicNavbar("/lost-person");
@@ -106,16 +108,35 @@
         formData.set("last_seen_time", new Date(formData.get("last_seen_time")).toISOString());
       }
 
+      // Plain-object copy for IndexedDB (File objects clone fine as-is;
+      // FormData itself doesn't) -- used only if we end up queueing offline.
+      const plainFields = {};
+      for (const [k, v] of formData.entries()) plainFields[k] = v;
+
+      if (!navigator.onLine) {
+        await NaviXDB.queuePendingReport(plainFields);
+        showOfflineQueued();
+        return;
+      }
+
       try {
+        formData.set("client_request_id", crypto.randomUUID());
         const person = await NaviXApi.postForm("/api/lost-persons", formData);
         document.getElementById("reportMsg").innerHTML = `<span class="text-success fw-bold">Report submitted — reference LP-${person.id}. Redirecting…</span>`;
         setTimeout(() => (window.location.href = "/lost-person"), 1400);
       } catch (err) {
-        document.getElementById("reportMsg").innerHTML = `<span class="text-danger">Could not submit: ${err.message}</span>`;
-        submitBtn.disabled = false;
-        submitBtn.textContent = "Submit Report";
+        // Server unreachable despite navigator.onLine -- fall back to the
+        // offline queue instead of losing the report (spec section 40).
+        await NaviXDB.queuePendingReport(plainFields);
+        showOfflineQueued();
       }
     });
+
+    function showOfflineQueued() {
+      document.getElementById("reportMsg").innerHTML =
+        `<span class="text-navix-muted fw-bold">📴 Saved offline. Will upload when connection returns.</span>`;
+      setTimeout(() => (window.location.href = "/lost-person"), 1800);
+    }
   </script>
 </body>
 </html>

@@ -14,6 +14,7 @@ const NaviXMap = (() => {
     volunteer: "🧭",
     emergency: "🆘",
     user: "📍",
+    gateway: "📶",
   };
 
   const COLORS = {
@@ -27,6 +28,7 @@ const NaviXMap = (() => {
     volunteer: "#0b2545",
     emergency: "#e02424",
     user: "#1e88e5",
+    gateway: "#6a1b9a",
   };
 
   function divIcon(type, opts = {}) {

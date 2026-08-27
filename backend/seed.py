@@ -14,21 +14,32 @@ from .models import (
     Announcement,
     AnnouncementCategory,
     AnnouncementPriority,
+    Authority,
+    AuthorityType,
+    DEFAULT_EMERGENCY_PRIORITY,
     Device,
     DeviceStatus,
+    DeviceType,
     Emergency,
+    EmergencySource,
     EmergencyStatus,
     EmergencyType,
     Facility,
     FacilityStatus,
     FacilityType,
+    Gateway,
+    GatewayStatus,
     LostPerson,
     LostPersonStatus,
+    NodeRole,
+    Route,
+    RouteWaypoint,
     User,
     UserRole,
     Volunteer,
     VolunteerStatus,
 )
+from .services.route_service import total_distance_km
 
 # Roughly the Alandi-Pune stretch of the Pandharpur Wari route.
 BASE_LAT, BASE_LON = 18.5204, 73.8567
@@ -44,6 +55,9 @@ def seed_if_empty(db: Session) -> None:
 
     _seed_users_and_volunteers(db)
     _seed_facilities(db)
+    _seed_authorities(db)
+    _seed_gateway_and_mesh_nodes(db)
+    _seed_route(db)
     _seed_emergencies(db)
     _seed_announcements(db)
     _seed_lost_persons(db)
@@ -155,16 +169,95 @@ def _seed_facilities(db: Session) -> None:
         ))
 
 
+def _seed_authorities(db: Session) -> None:
+    samples = [
+        ("Pune Rural Police - Wari Control", AuthorityType.police, "100"),
+        ("Civil Hospital Medical Team", AuthorityType.medical, "108"),
+        ("Crowd Management Cell", AuthorityType.crowd_management, "1800-222-333"),
+        ("District Disaster Management Authority", AuthorityType.disaster_management, "1077"),
+        ("Missing Person Coordination Desk", AuthorityType.missing_person, "1800-111-222"),
+    ]
+    for name, atype, contact in samples:
+        db.add(Authority(
+            name=name, type=atype, contact=contact,
+            latitude=_jitter(BASE_LAT), longitude=_jitter(BASE_LON), active=True,
+        ))
+
+
+def _seed_gateway_and_mesh_nodes(db: Session) -> None:
+    """Seeds the conceptual field-network demo (spec sections 70/71):
+    NODE-01..05 as sub-volunteer LoRa nodes reporting through GW-01, the
+    Main Volunteer gateway -- distinct from the general volunteer roster
+    above, representing the physical mesh-hardware layer specifically."""
+    gateway = Gateway(
+        gateway_id="GW-01",
+        name="Main Volunteer Gateway - Checkpoint 4",
+        latitude=_jitter(BASE_LAT), longitude=_jitter(BASE_LON),
+        status=GatewayStatus.online,
+        internet_status="online", bluetooth_status="connected",
+        battery=88, messages_received=0,
+        last_seen=datetime.utcnow(),
+    )
+    db.add(gateway)
+
+    for i in range(1, 6):
+        node_id = f"NODE-{i:02d}"
+        role = NodeRole.main_gateway if i == 5 else (NodeRole.relay if i in (3, 4) else NodeRole.sub_volunteer)
+        db.add(Device(
+            device_id=node_id,
+            device_type=DeviceType.volunteer_node,
+            node_role=role,
+            latitude=_jitter(BASE_LAT), longitude=_jitter(BASE_LON),
+            battery=random.randint(60, 100),
+            status=DeviceStatus.online,
+            firmware_version="0.2.0",
+            hardware_version="ESP32-SX1278-rev2",
+            last_rssi=random.randint(-100, -60),
+            last_snr=round(random.uniform(2.0, 9.0), 1),
+            last_seen=datetime.utcnow(),
+        ))
+
+
+def _seed_route(db: Session) -> None:
+    """One pre-stored Wari route for offline waypoint navigation (spec
+    sections 10-12) -- a short illustrative path near the seeded facilities,
+    not a real surveyed route."""
+    route = Route(name="Wari Route A - Alandi to Main Ground", source_label="Alandi Gate", destination_label="Main Ground", version=1, active=True)
+    db.add(route)
+    db.flush()
+
+    waypoints_data = [
+        (1, "Continue Straight", "Alandi Gate"),
+        (2, "Turn Right", "Chowk 2 Water Point"),
+        (3, "Continue Straight", "Checkpoint 4"),
+        (4, "Turn Left", "Community Kitchen"),
+        (5, "Continue Straight", "Main Ground"),
+    ]
+    lat, lon = BASE_LAT, BASE_LON
+    for sequence, instruction, landmark in waypoints_data:
+        lat += random.uniform(0.0008, 0.0018)
+        lon += random.uniform(-0.001, 0.001)
+        db.add(RouteWaypoint(
+            route_id=route.id, sequence=sequence,
+            latitude=round(lat, 6), longitude=round(lon, 6),
+            instruction=instruction, landmark=landmark,
+        ))
+    db.flush()
+    db.refresh(route)
+    route.total_distance_km = total_distance_km(route.waypoints)
+
+
 def _seed_emergencies(db: Session) -> None:
     samples = [
-        (EmergencyType.medical, EmergencyStatus.new, "Elderly pilgrim feeling dizzy near Chowk 2."),
-        (EmergencyType.police, EmergencyStatus.responding, "Overcrowding reported near Checkpoint 4."),
-        (EmergencyType.lost_person, EmergencyStatus.acknowledged, "Child separated from family near Main Ground."),
+        (EmergencyType.medical, EmergencyStatus.new, "Elderly pilgrim feeling dizzy near Chowk 2.", EmergencySource.companion_app),
+        (EmergencyType.police, EmergencyStatus.responding, "Overcrowding reported near Checkpoint 4.", EmergencySource.lora_gateway),
+        (EmergencyType.lost_person, EmergencyStatus.acknowledged, "Child separated from family near Main Ground.", EmergencySource.companion_app),
     ]
-    for etype, status, desc in samples:
+    for etype, status, desc, source in samples:
         db.add(Emergency(
             type=etype, latitude=_jitter(BASE_LAT), longitude=_jitter(BASE_LON),
-            description=desc, status=status,
+            description=desc, status=status, source=source,
+            priority=DEFAULT_EMERGENCY_PRIORITY[etype.value],
             created_at=datetime.utcnow() - timedelta(minutes=random.randint(1, 20)),
         ))
 

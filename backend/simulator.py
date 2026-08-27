@@ -17,8 +17,8 @@ from sqlalchemy.orm import Session
 
 from . import schemas
 from .database import SessionLocal
-from .models import Device, DeviceStatus, Emergency, EmergencyStatus, EmergencyType, Volunteer
-from .services.notification_service import notify_device_update, notify_sos_created, notify_volunteer_update
+from .models import Device, DeviceStatus, Emergency, EmergencySource, EmergencyStatus, EmergencyType, Gateway, GatewayStatus, Volunteer
+from .services.notification_service import notify_device_updated, notify_gateway_updated, notify_sos_created, notify_volunteer_updated
 
 logger = logging.getLogger("navix.simulator")
 
@@ -43,7 +43,7 @@ async def _tick(db: Session) -> None:
         volunteer.last_seen = datetime.utcnow()
         db.commit()
         db.refresh(volunteer)
-        await notify_volunteer_update(schemas.VolunteerOut.model_validate(volunteer).model_dump())
+        await notify_volunteer_updated(schemas.VolunteerOut.model_validate(volunteer).model_dump())
 
         if volunteer.device_id:
             device = db.query(Device).filter(Device.device_id == volunteer.device_id).first()
@@ -53,9 +53,14 @@ async def _tick(db: Session) -> None:
                 device.battery = volunteer.battery_level
                 device.status = DeviceStatus.online
                 device.last_seen = datetime.utcnow()
+                # Bounded, realistic-looking RSSI/SNR jitter (spec section
+                # 58) -- purely cosmetic telemetry for the field-network
+                # demo view, not derived from any real radio.
+                device.last_rssi = max(-120, min(-40, (device.last_rssi or -85) + random.randint(-3, 3)))
+                device.last_snr = round(max(-5.0, min(15.0, (device.last_snr or 6.0) + random.uniform(-0.5, 0.5))), 1)
                 db.commit()
                 db.refresh(device)
-                await notify_device_update(schemas.DeviceOut.model_validate(device).model_dump())
+                await notify_device_updated(schemas.DeviceOut.model_validate(device).model_dump())
 
         if random.random() < RANDOM_EMERGENCY_CHANCE:
             emergency = Emergency(
@@ -64,11 +69,25 @@ async def _tick(db: Session) -> None:
                 longitude=volunteer.longitude,
                 description=f"Simulated demo emergency near volunteer {volunteer.name}",
                 status=EmergencyStatus.new,
+                source=EmergencySource.simulator,
+                device_id=volunteer.device_id,
             )
             db.add(emergency)
             db.commit()
             db.refresh(emergency)
             await notify_sos_created(schemas.EmergencyOut.model_validate(emergency).model_dump())
+
+    # Gateway heartbeat -- keeps GW-01 (seeded) looking alive while demo
+    # mode runs, with slightly jittered battery, matching the volunteer loop.
+    gateways = db.query(Gateway).all()
+    for gateway in gateways:
+        gateway.status = GatewayStatus.online
+        gateway.last_seen = datetime.utcnow()
+        if gateway.battery is not None:
+            gateway.battery = max(5, min(100, gateway.battery + random.randint(-1, 1)))
+        db.commit()
+        db.refresh(gateway)
+        await notify_gateway_updated(schemas.GatewayOut.model_validate(gateway).model_dump())
 
 
 async def _run_loop() -> None:

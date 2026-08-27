@@ -6,24 +6,20 @@ app anonymously (see spec section 18). Passwords are always stored hashed
 (bcrypt, used directly -- not via passlib, whose bcrypt backend has known
 compatibility breaks against modern bcrypt releases), never in plain text.
 """
-import os
 from datetime import datetime, timedelta
 from typing import Optional
 
 import bcrypt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 
+from .config import ACCESS_TOKEN_EXPIRE_MINUTES, GATEWAY_API_KEY, SECRET_KEY
 from .database import get_db
 from .models import User, UserRole
 
-# In a real deployment this MUST come from an environment variable / secret
-# manager. A fallback is provided so the demo runs out of the box.
-SECRET_KEY = os.getenv("NAVIX_SECRET_KEY", "navix-dev-secret-change-me-in-production")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 12  # 12 hours -- long enough for a field shift
 
 # HTTPBearer (rather than OAuth2PasswordBearer) because /api/auth/login takes
 # a plain JSON body, not an OAuth2 form -- this still shows a working
@@ -96,3 +92,12 @@ def require_admin(user: User = Depends(get_current_user)) -> User:
     if user.role != UserRole.admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Control-room/admin access required")
     return user
+
+
+def require_gateway_key(x_navix_gateway_key: Optional[str] = Header(default=None)) -> None:
+    """Simple shared-secret check for hardware/gateway ingestion endpoints
+    (spec section 49). Not full mutual-TLS-grade security -- a documented,
+    development-ready starting point. Rotate NAVIX_GATEWAY_API_KEY per
+    deployment via the environment; never hardcode it into JavaScript."""
+    if not x_navix_gateway_key or x_navix_gateway_key != GATEWAY_API_KEY:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing or invalid X-NaviX-Gateway-Key header")

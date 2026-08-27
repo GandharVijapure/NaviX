@@ -4,17 +4,21 @@ a real ESP32 + SX1278 base station will eventually POST to; for this MVP
 they're driven either by the Hardware Simulator page or by backend/simulator.py.
 No auth is required on these -- field devices authenticate implicitly via a
 known device_id (a real deployment would add a per-device shared secret/HMAC
-here without changing the payload shape).
+here without changing the payload shape). Preserved unchanged in shape for
+backward compatibility -- see routers/gateways.py for the newer,
+API-key-protected, multi-hop-aware ingestion path.
 """
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from .. import schemas
+from ..config import DEVICE_STALE_SECONDS
 from ..database import get_db
-from ..models import Device, DeviceStatus, Emergency, EmergencyStatus, Volunteer
-from ..services.notification_service import notify_device_update, notify_sos_created, notify_volunteer_update
+from ..models import Device, DeviceStatus, EmergencySource, Volunteer
+from ..services.emergency_service import create_emergency
+from ..services.notification_service import notify_device_updated, notify_volunteer_updated
 
 router = APIRouter(prefix="/api/device", tags=["Devices"])
 
@@ -26,6 +30,12 @@ def _get_or_create_device(db: Session, device_id: str) -> Device:
         db.add(device)
         db.flush()
     return device
+
+
+def _device_out(device: Device) -> schemas.DeviceOut:
+    out = schemas.DeviceOut.model_validate(device)
+    out.is_stale = (datetime.utcnow() - device.last_seen) > timedelta(seconds=DEVICE_STALE_SECONDS)
+    return out
 
 
 @router.post("/location", response_model=schemas.DeviceOut)
@@ -51,28 +61,27 @@ async def report_location(payload: schemas.DeviceLocationIn, db: Session = Depen
             volunteer.battery_level = payload.battery
         db.commit()
         db.refresh(volunteer)
-        await notify_volunteer_update(schemas.VolunteerOut.model_validate(volunteer).model_dump())
+        await notify_volunteer_updated(schemas.VolunteerOut.model_validate(volunteer).model_dump())
 
-    await notify_device_update(schemas.DeviceOut.model_validate(device).model_dump())
-    return device
+    await notify_device_updated(_device_out(device).model_dump())
+    return _device_out(device)
 
 
 @router.post("/sos", response_model=schemas.EmergencyOut, status_code=201)
 async def device_sos(payload: schemas.DeviceSOSIn, db: Session = Depends(get_db)):
     """A field device (button press on an ESP32 unit) raises an SOS on
-    behalf of whoever is carrying it -- same emergency pipeline as the
-    pilgrim-facing /api/emergencies endpoint."""
-    emergency = Emergency(
+    behalf of whoever is carrying it -- same shared emergency pipeline as
+    the pilgrim-facing /api/emergencies endpoint."""
+    emergency, _created = await create_emergency(
+        db,
         type=payload.emergency_type,
         latitude=payload.latitude,
         longitude=payload.longitude,
         description=payload.description or f"SOS raised from device {payload.device_id}",
-        status=EmergencyStatus.new,
+        source=EmergencySource.volunteer_device,
+        device_id=payload.device_id,
+        client_request_id=payload.client_request_id,
     )
-    db.add(emergency)
-    db.commit()
-    db.refresh(emergency)
-    await notify_sos_created(schemas.EmergencyOut.model_validate(emergency).model_dump())
     return emergency
 
 
@@ -85,8 +94,8 @@ async def device_status(payload: schemas.DeviceStatusIn, db: Session = Depends(g
     device.last_seen = datetime.utcnow()
     db.commit()
     db.refresh(device)
-    await notify_device_update(schemas.DeviceOut.model_validate(device).model_dump())
-    return device
+    await notify_device_updated(_device_out(device).model_dump())
+    return _device_out(device)
 
 
 @router.post("/heartbeat", response_model=schemas.DeviceOut)
@@ -99,10 +108,12 @@ async def device_heartbeat(payload: schemas.DeviceHeartbeatIn, db: Session = Dep
     if payload.latitude is not None and payload.longitude is not None:
         device.latitude = payload.latitude
         device.longitude = payload.longitude
+    if payload.firmware_version:
+        device.firmware_version = payload.firmware_version
     db.commit()
     db.refresh(device)
-    await notify_device_update(schemas.DeviceOut.model_validate(device).model_dump())
-    return device
+    await notify_device_updated(_device_out(device).model_dump())
+    return _device_out(device)
 
 
 @router.get("/commands", response_model=list[schemas.DeviceCommandOut])
@@ -115,4 +126,12 @@ def get_commands(device_id: str):
 
 @router.get("", response_model=list[schemas.DeviceOut], tags=["Devices"])
 def list_devices(db: Session = Depends(get_db)):
-    return db.query(Device).all()
+    devices = db.query(Device).all()
+    stale_ids = []
+    for d in devices:
+        if (datetime.utcnow() - d.last_seen) > timedelta(seconds=DEVICE_STALE_SECONDS) and d.status == DeviceStatus.online:
+            d.status = DeviceStatus.offline
+            stale_ids.append(d.id)
+    if stale_ids:
+        db.commit()
+    return [_device_out(d) for d in devices]

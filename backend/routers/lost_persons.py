@@ -16,13 +16,14 @@ from .. import schemas
 from ..auth import require_admin
 from ..database import get_db
 from ..models import LostPerson, LostPersonStatus, User
-from ..services.notification_service import notify_lost_person_update
+from ..services.notification_service import notify_lost_person_created, notify_lost_person_updated
 
 router = APIRouter(prefix="/api/lost-persons", tags=["Lost Persons"])
 
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static", "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+MAX_PHOTO_BYTES = 6 * 1024 * 1024  # 6 MB -- generous for a phone photo, small enough to not choke the server
 
 
 @router.get("", response_model=list[schemas.LostPersonOut])
@@ -60,17 +61,30 @@ async def report_lost_person(
     last_seen_longitude: Optional[float] = Form(None),
     last_seen_time: Optional[datetime] = Form(None),
     contact: Optional[str] = Form(None),
+    client_request_id: Optional[str] = Form(None),
     photo: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
 ):
+    # Idempotency (spec sections 40/47): a report queued offline and retried
+    # after reconnecting should not create a second row.
+    if client_request_id:
+        existing = db.query(LostPerson).filter(LostPerson.client_request_id == client_request_id).first()
+        if existing:
+            return existing
+
     photo_path = None
     if photo is not None and photo.filename:
+        # File upload security (spec section 79): restrict MIME type, cap
+        # size, generate a safe random filename -- never trust the
+        # client-supplied name/path.
         if photo.content_type not in ALLOWED_IMAGE_TYPES:
             raise HTTPException(status_code=400, detail="Photo must be a JPEG, PNG, WEBP or GIF image")
-        ext = os.path.splitext(photo.filename)[1] or ".jpg"
+        contents = await photo.read()
+        if len(contents) > MAX_PHOTO_BYTES:
+            raise HTTPException(status_code=400, detail="Photo is too large (max 6 MB)")
+        ext = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "image/gif": ".gif"}[photo.content_type]
         filename = f"{uuid.uuid4().hex}{ext}"
         dest = os.path.join(UPLOAD_DIR, filename)
-        contents = await photo.read()
         with open(dest, "wb") as f:
             f.write(contents)
         photo_path = f"/static/uploads/{filename}"
@@ -87,12 +101,13 @@ async def report_lost_person(
         last_seen_longitude=last_seen_longitude,
         last_seen_time=last_seen_time,
         contact=contact,
+        client_request_id=client_request_id,
         status=LostPersonStatus.missing,
     )
     db.add(person)
     db.commit()
     db.refresh(person)
-    await notify_lost_person_update(schemas.LostPersonOut.model_validate(person).model_dump())
+    await notify_lost_person_created(schemas.LostPersonOut.model_validate(person).model_dump())
     return person
 
 
@@ -106,5 +121,5 @@ async def update_status(
     person.status = payload.status
     db.commit()
     db.refresh(person)
-    await notify_lost_person_update(schemas.LostPersonOut.model_validate(person).model_dump())
+    await notify_lost_person_updated(schemas.LostPersonOut.model_validate(person).model_dump())
     return person

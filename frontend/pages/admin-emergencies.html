@@ -26,11 +26,13 @@
                 <option value="RESPONDER_ASSIGNED">Responder Assigned</option>
                 <option value="RESPONDING">Responding</option>
                 <option value="RESOLVED">Resolved</option>
+                <option value="CANCELLED">Cancelled</option>
+                <option value="DUPLICATE">Duplicate</option>
               </select>
             </div>
             <div class="table-responsive">
               <table class="table align-middle mb-0">
-                <thead><tr><th>ID</th><th>Type</th><th>Reported</th><th>Status</th><th></th></tr></thead>
+                <thead><tr><th>ID</th><th>Type</th><th>Priority</th><th>Source</th><th>Reported</th><th>Status</th><th></th></tr></thead>
                 <tbody id="rows"></tbody>
               </table>
             </div>
@@ -55,13 +57,23 @@
     NaviXAuth.requireRole("admin", "/admin/login");
     NaviXLayout.renderAdminShell("/admin/emergencies", "Emergencies");
 
-    const STATUS_FLOW = ["NEW", "ACKNOWLEDGED", "RESPONDER_ASSIGNED", "RESPONDING", "RESOLVED"];
+    const STATUS_FLOW = ["NEW", "ACKNOWLEDGED", "RESPONDER_ASSIGNED", "RESPONDING", "RESOLVED", "CANCELLED", "DUPLICATE"];
+    const PRIORITIES = ["critical", "high", "normal", "low"];
+    const SOURCE_LABELS = {
+      companion_app: "Companion App", volunteer_device: "Volunteer Device",
+      lora_gateway: "LoRa Gateway", control_room: "Control Room", simulator: "Simulator",
+    };
     const focusId = Number(new URLSearchParams(window.location.search).get("focus")) || null;
     let selectedId = focusId;
 
     function timeAgo(iso) {
       const diffMin = Math.max(0, Math.round((Date.now() - new Date(iso + "Z")) / 60000));
       return diffMin < 1 ? "just now" : `${diffMin} min ago`;
+    }
+
+    function priorityBadge(p) {
+      const cls = { critical: "bg-danger", high: "bg-warning text-dark", normal: "bg-secondary", low: "bg-light text-dark" }[p] || "bg-secondary";
+      return `<span class="badge ${cls} text-uppercase">${p}</span>`;
     }
 
     async function loadRows() {
@@ -71,12 +83,14 @@
         .map(
           (e) => `<tr style="cursor:pointer;" data-id="${e.id}" class="${e.id === selectedId ? 'table-active' : ''}">
             <td>SOS-${e.id}</td><td class="text-capitalize">${e.type.replace("_", " ")}</td>
+            <td>${priorityBadge(e.priority)}</td>
+            <td class="small">${SOURCE_LABELS[e.source] || e.source}</td>
             <td>${timeAgo(e.created_at)}</td>
             <td><span class="status-pill ${e.status.toLowerCase()}">${e.status.replace("_", " ")}</span></td>
             <td><button class="btn btn-sm btn-navix-outline detail-btn" style="min-height:32px;" data-id="${e.id}">View</button></td>
           </tr>`
         )
-        .join("");
+        .join("") || `<tr><td colspan="7" class="text-navix-muted">No emergencies match this filter.</td></tr>`;
 
       document.querySelectorAll(".detail-btn, tr[data-id]").forEach((el) => {
         el.addEventListener("click", () => openDetail(Number(el.getAttribute("data-id"))));
@@ -87,25 +101,59 @@
 
     async function openDetail(id) {
       selectedId = id;
-      const [emergency, nearestVolunteer, volunteers] = await Promise.all([
+      const [emergency, nearest, volunteers, authorities, events] = await Promise.all([
         NaviXApi.get(`/api/emergencies/${id}`),
-        NaviXApi.get(`/api/emergencies/${id}/nearest-volunteer`).catch(() => null),
+        NaviXApi.get(`/api/emergencies/${id}/nearest-volunteers?limit=5`).catch(() => []),
         NaviXApi.get("/api/volunteers"),
+        NaviXApi.get("/api/authorities").catch(() => []),
+        NaviXApi.get(`/api/emergencies/${id}/events`).catch(() => []),
       ]);
 
       const volunteerOptions = volunteers
         .map((v) => `<option value="${v.id}" ${v.id === emergency.assigned_volunteer ? "selected" : ""}>${v.name} (${v.status})</option>`)
         .join("");
-
+      const authorityOptions = authorities
+        .map((a) => `<option value="${a.id}" ${a.id === emergency.assigned_authority ? "selected" : ""}>${a.name}</option>`)
+        .join("");
       const statusOptions = STATUS_FLOW.map((s) => `<option value="${s}" ${s === emergency.status ? "selected" : ""}>${s.replace("_", " ")}</option>`).join("");
+      const priorityOptions = PRIORITIES.map((p) => `<option value="${p}" ${p === emergency.priority ? "selected" : ""}>${p}</option>`).join("");
+
+      const nearestList = nearest.length
+        ? nearest.map((v) => `<div class="d-flex justify-content-between small border-bottom py-1">
+            <span>${v.name} <span class="status-pill ${v.status}">${v.status}</span></span>
+            <span>${(v.distance_km * 1000).toFixed(0)} m</span>
+          </div>`).join("")
+        : `<p class="text-navix-muted small">No volunteers registered.</p>`;
+
+      const loraProvenance = emergency.source === "lora_gateway" ? `
+        <div class="border rounded p-2 mb-2 small">
+          <div><strong>Origin node:</strong> ${emergency.origin_node || "—"}</div>
+          <div><strong>Gateway:</strong> ${emergency.gateway_node || "—"}</div>
+          <div><strong>Hop count:</strong> ${emergency.hop_count ?? "—"} · <strong>RSSI:</strong> ${emergency.rssi ?? "—"} dBm · <strong>SNR:</strong> ${emergency.snr ?? "—"} dB</div>
+        </div>` : "";
+
+      const eventHistory = events.length
+        ? events.map((ev) => `<div class="small border-bottom py-1">
+            <strong>${ev.event_type.replace("_", " ")}</strong>${ev.new_status ? " → " + ev.new_status : ""}
+            <span class="text-navix-muted"> · ${ev.performed_by || "system"} · ${new Date(ev.timestamp + "Z").toLocaleTimeString()}</span>
+            ${ev.notes ? `<div class="text-navix-muted">${ev.notes}</div>` : ""}
+          </div>`).join("")
+        : `<p class="text-navix-muted small">No history yet.</p>`;
 
       document.getElementById("detailPanel").innerHTML = `
-        <h6 class="fw-bold">SOS-${emergency.id}</h6>
-        <div class="text-navix-muted small mb-2">${new Date(emergency.created_at + "Z").toLocaleString()}</div>
+        <div class="d-flex justify-content-between align-items-start">
+          <h6 class="fw-bold">SOS-${emergency.id}</h6>
+          ${priorityBadge(emergency.priority)}
+        </div>
+        <div class="text-navix-muted small mb-2">${new Date(emergency.created_at + "Z").toLocaleString()} · via ${SOURCE_LABELS[emergency.source] || emergency.source}</div>
         <div class="mb-2"><strong>Type:</strong> ${emergency.type.replace("_", " ")}</div>
         <div class="mb-2"><strong>Coordinates:</strong> ${emergency.latitude.toFixed(5)}, ${emergency.longitude.toFixed(5)}</div>
         <div class="mb-2"><strong>Description:</strong> ${emergency.description || "—"}</div>
-        <div class="mb-2"><strong>Nearest volunteer:</strong> ${nearestVolunteer ? nearestVolunteer.name : "None available"}</div>
+        ${emergency.reporter_contact ? `<div class="mb-2"><strong>Reporter contact:</strong> ${emergency.reporter_contact}</div>` : ""}
+        ${loraProvenance}
+
+        <label class="fw-bold small d-block mt-2 mb-1">Nearest volunteers</label>
+        ${nearestList}
 
         <label class="fw-bold small d-block mt-3 mb-1">Assign responder</label>
         <select id="assignSelect" class="form-select mb-2">
@@ -114,9 +162,27 @@
         </select>
         <button id="assignBtn" class="btn btn-navix-primary w-100 mb-3">Assign Responder</button>
 
-        <label class="fw-bold small d-block mb-1">Status</label>
-        <select id="statusSelect" class="form-select mb-2">${statusOptions}</select>
-        <button id="statusBtn" class="btn btn-navix-outline w-100">Update Status</button>
+        <label class="fw-bold small d-block mb-1">Assign authority</label>
+        <select id="authoritySelect" class="form-select mb-2">
+          <option value="">— None —</option>
+          ${authorityOptions}
+        </select>
+        <button id="dispatchBtn" class="btn btn-navix-outline w-100 mb-3">Dispatch to Authority</button>
+
+        <div class="row g-2 mb-2">
+          <div class="col-6">
+            <label class="fw-bold small d-block mb-1">Priority</label>
+            <select id="prioritySelect" class="form-select">${priorityOptions}</select>
+          </div>
+          <div class="col-6">
+            <label class="fw-bold small d-block mb-1">Status</label>
+            <select id="statusSelect" class="form-select">${statusOptions}</select>
+          </div>
+        </div>
+        <button id="statusBtn" class="btn btn-navix-outline w-100 mb-3">Apply Priority / Status</button>
+
+        <label class="fw-bold small d-block mb-1">History</label>
+        <div style="max-height:180px; overflow-y:auto;">${eventHistory}</div>
       `;
 
       document.getElementById("assignBtn").addEventListener("click", async () => {
@@ -125,14 +191,23 @@
         await NaviXApi.put(`/api/emergencies/${id}`, { assigned_volunteer: Number(value) });
         loadRows();
       });
+      document.getElementById("dispatchBtn").addEventListener("click", async () => {
+        const value = document.getElementById("authoritySelect").value;
+        if (!value) return;
+        await NaviXApi.post("/api/dispatches", { emergency_id: id, authority_id: Number(value) });
+        loadRows();
+      });
       document.getElementById("statusBtn").addEventListener("click", async () => {
-        await NaviXApi.put(`/api/emergencies/${id}`, { status: document.getElementById("statusSelect").value });
+        await NaviXApi.put(`/api/emergencies/${id}`, {
+          status: document.getElementById("statusSelect").value,
+          priority: document.getElementById("prioritySelect").value,
+        });
         loadRows();
       });
     }
 
     document.getElementById("statusFilter").addEventListener("change", loadRows);
-    NaviXSocket.on("sos_created", loadRows);
+    NaviXSocket.on("emergency_created", loadRows);
     NaviXSocket.on("emergency_updated", loadRows);
 
     loadRows();

@@ -14,7 +14,10 @@
   <div id="navix-navbar"></div>
 
   <div class="container py-4" style="max-width:680px;">
-    <h2 class="section-title mb-3">Announcements &amp; Alerts</h2>
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+      <h2 class="section-title mb-0">Announcements &amp; Alerts</h2>
+      <span id="offlineDataNote" class="offline-data-note" style="display:none;"></span>
+    </div>
     <div id="announcementList" class="d-flex flex-column gap-3">
       <p class="text-navix-muted">Loading announcements…</p>
     </div>
@@ -28,6 +31,8 @@
   <script src="/js/i18n.js"></script>
   <script src="/js/layout.js"></script>
   <script src="/js/ws.js"></script>
+  <script src="/js/offline-db.js"></script>
+  <script src="/js/sync-manager.js"></script>
   <script src="/js/pwa-register.js"></script>
   <script>
     NaviXLayout.renderPublicNavbar("/alerts");
@@ -68,13 +73,26 @@
 
     async function loadAnnouncements() {
       const listEl = document.getElementById("announcementList");
+      const noteEl = document.getElementById("offlineDataNote");
       try {
         const announcements = await NaviXApi.get("/api/announcements/active");
+        noteEl.style.display = "none";
+        NaviXDB.saveAnnouncements(announcements).catch(() => {});
         listEl.innerHTML = announcements.length
           ? announcements.map(renderCard).join("")
           : `<p class="text-navix-muted">No active announcements right now.</p>`;
       } catch (e) {
-        listEl.innerHTML = `<p class="text-navix-muted">Could not load announcements (offline). Showing last known alerts if cached.</p>`;
+        const cached = await NaviXDB.getAll("announcements").catch(() => []);
+        const updatedAt = await NaviXDB.getMetadata("announcements_updated_at").catch(() => null);
+        if (!cached.length) {
+          listEl.innerHTML = `<p class="text-navix-muted">Offline — no cached announcements on this device yet.</p>`;
+          return;
+        }
+        if (updatedAt) {
+          noteEl.textContent = `📴 Offline data — last updated at ${new Date(updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+          noteEl.style.display = "inline-flex";
+        }
+        listEl.innerHTML = cached.map(renderCard).join("");
       }
     }
 

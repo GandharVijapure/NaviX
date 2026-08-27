@@ -30,18 +30,33 @@
       <label class="fw-bold mb-1" for="sosDescription">Optional short description</label>
       <textarea id="sosDescription" class="form-control mb-2" rows="3" placeholder="E.g. Near the water tank, elderly woman feeling unwell"></textarea>
 
+      <label class="fw-bold mb-1" for="sosContact">Optional contact number</label>
+      <input id="sosContact" class="form-control mb-3" placeholder="So a volunteer can call you back" />
+
       <div id="locStatus" class="text-navix-muted small mb-3">📍 Getting your location…</div>
 
-      <button id="sendSosBtn" class="btn btn-navix-danger w-100" disabled data-i18n="sos_send">SEND SOS</button>
+      <button id="reviewSosBtn" class="btn btn-navix-danger w-100" disabled data-i18n="sos_send">SEND SOS</button>
+    </div>
+
+    <!-- Confirmation preview (spec section 13) shown before actually transmitting -->
+    <div id="sosConfirm" class="navix-card p-4" style="display:none;">
+      <h5 class="fw-bold mb-3">Confirm Emergency</h5>
+      <div class="mb-2"><span class="text-navix-muted">Emergency:</span> <strong id="confirmType"></strong></div>
+      <div class="mb-3"><span class="text-navix-muted">Location:</span> <strong id="confirmLocation"></strong></div>
+      <div id="confirmOfflineNote" class="offline-data-note mb-3" style="display:none;">📴 You're offline — this will be queued and sent automatically once connected.</div>
+      <div class="d-flex gap-2">
+        <button id="backToFormBtn" class="btn btn-navix-outline flex-grow-1">Back</button>
+        <button id="sendSosBtn" class="btn btn-navix-danger flex-grow-1">SEND SOS</button>
+      </div>
     </div>
 
     <div id="sosSuccess" style="display:none;">
       <div class="navix-card p-4 text-center">
-        <div style="font-size:3rem;">✅</div>
-        <h3 class="section-title mt-2" data-i18n="sos_sent">SOS Sent Successfully</h3>
-        <p class="text-navix-muted">Emergency ID: <strong id="sosId"></strong></p>
-        <div class="status-pill new mb-3" id="sosStatus">NEW</div>
-        <p class="text-navix-muted small">Stay where you are if it's safe to do so. A volunteer will be assigned shortly.</p>
+        <div style="font-size:3rem;" id="successIcon">✅</div>
+        <h3 class="section-title mt-2" id="successTitle" data-i18n="sos_sent">SOS Sent Successfully</h3>
+        <p class="text-navix-muted" id="successSubtitle">Emergency ID: <strong id="sosId"></strong></p>
+        <div class="status-pill new mb-3" id="sosStatus" style="display:none;">NEW</div>
+        <p class="text-navix-muted small" id="successNote">Stay where you are if it's safe to do so. A volunteer will be assigned shortly.</p>
         <a href="/find-help" class="btn btn-navix-primary w-100 mt-2">Back to Find Help</a>
       </div>
     </div>
@@ -56,11 +71,14 @@
   <script src="/js/layout.js"></script>
   <script src="/js/geo.js"></script>
   <script src="/js/ws.js"></script>
+  <script src="/js/offline-db.js"></script>
+  <script src="/js/sync-manager.js"></script>
   <script src="/js/pwa-register.js"></script>
   <script>
     NaviXLayout.renderPublicNavbar("/alerts"); // no exact nav match; keep nav neutral
     NaviXLayout.renderFooter();
 
+    const TYPE_LABELS = { medical: "Medical Emergency", police: "Police Assistance", lost_person: "Lost Person", crowd: "Crowd Problem", other: "Other" };
     let selectedType = null;
     let userLoc = null;
 
@@ -72,45 +90,83 @@
       btn.classList.remove("btn-navix-outline");
       btn.classList.add("btn-navix-danger");
       selectedType = btn.getAttribute("data-type");
-      updateSendButton();
+      document.getElementById("reviewSosBtn").disabled = false;
     });
-
-    function updateSendButton() {
-      document.getElementById("sendSosBtn").disabled = !selectedType;
-    }
 
     async function locate() {
       userLoc = await NaviXGeo.getCurrentPosition();
       document.getElementById("locStatus").textContent = `📍 Location ready (${userLoc.lat.toFixed(4)}, ${userLoc.lon.toFixed(4)})`;
     }
 
-    document.getElementById("sendSosBtn").addEventListener("click", async () => {
+    document.getElementById("reviewSosBtn").addEventListener("click", () => {
       if (!selectedType) return;
+      const loc = userLoc || NaviXGeo.FALLBACK;
+      document.getElementById("confirmType").textContent = TYPE_LABELS[selectedType];
+      document.getElementById("confirmLocation").textContent = `${loc.lat.toFixed(5)}, ${loc.lon.toFixed(5)}`;
+      document.getElementById("confirmOfflineNote").style.display = navigator.onLine ? "none" : "flex";
+      document.getElementById("sosForm").style.display = "none";
+      document.getElementById("sosConfirm").style.display = "block";
+    });
+
+    document.getElementById("backToFormBtn").addEventListener("click", () => {
+      document.getElementById("sosConfirm").style.display = "none";
+      document.getElementById("sosForm").style.display = "block";
+    });
+
+    document.getElementById("sendSosBtn").addEventListener("click", async () => {
       const btn = document.getElementById("sendSosBtn");
       btn.disabled = true;
       btn.textContent = "Sending…";
-      try {
-        const loc = userLoc || NaviXGeo.FALLBACK;
-        const emergency = await NaviXApi.post("/api/emergencies", {
-          type: selectedType,
-          latitude: loc.lat,
-          longitude: loc.lon,
-          description: document.getElementById("sosDescription").value || null,
-        });
-        document.getElementById("sosForm").style.display = "none";
-        document.getElementById("sosSuccess").style.display = "block";
-        document.getElementById("sosId").textContent = `SOS-${emergency.id}`;
-        renderStatus(emergency.status);
+      const loc = userLoc || NaviXGeo.FALLBACK;
+      const payload = {
+        type: selectedType,
+        latitude: loc.lat,
+        longitude: loc.lon,
+        accuracy: loc.accuracy || null,
+        description: document.getElementById("sosDescription").value || null,
+        reporter_contact: document.getElementById("sosContact").value || null,
+      };
 
-        NaviXSocket.on("emergency_updated", (data) => {
-          if (data.id === emergency.id) renderStatus(data.status);
-        });
+      if (!navigator.onLine) {
+        // Offline queueing (spec sections 9/73): store locally with a
+        // stable client_request_id, sync-manager.js sends it once online.
+        const queued = await NaviXDB.queuePendingSos(payload);
+        showOfflineQueued(queued.client_request_id);
+        return;
+      }
+
+      try {
+        const emergency = await NaviXApi.post("/api/emergencies", { ...payload, client_request_id: crypto.randomUUID() });
+        showSuccess(emergency);
       } catch (e) {
-        alert("Could not send SOS: " + e.message + ". Please try again or find the nearest volunteer/police post in person.");
-        btn.disabled = false;
-        btn.textContent = "SEND SOS";
+        // Network failed even though navigator.onLine said we're online
+        // (e.g. server unreachable) -- fall back to the offline queue
+        // rather than losing the report.
+        const queued = await NaviXDB.queuePendingSos(payload);
+        showOfflineQueued(queued.client_request_id);
       }
     });
+
+    function showSuccess(emergency) {
+      document.getElementById("sosConfirm").style.display = "none";
+      document.getElementById("sosSuccess").style.display = "block";
+      document.getElementById("sosId").textContent = `SOS-${emergency.id}`;
+      document.getElementById("sosStatus").style.display = "inline-block";
+      renderStatus(emergency.status);
+      NaviXSocket.on("emergency_updated", (data) => {
+        if (data.id === emergency.id) renderStatus(data.status);
+      });
+    }
+
+    function showOfflineQueued() {
+      document.getElementById("sosConfirm").style.display = "none";
+      document.getElementById("sosSuccess").style.display = "block";
+      document.getElementById("successIcon").textContent = "📴";
+      document.getElementById("successTitle").textContent = "Saved Offline";
+      document.getElementById("successSubtitle").textContent = "Your SOS could not reach the server right now.";
+      document.getElementById("successNote").textContent =
+        "It has been saved on this device and will be sent automatically as soon as your connection returns. If this is urgent, also try to reach the nearest volunteer or police post in person.";
+    }
 
     function renderStatus(status) {
       const pill = document.getElementById("sosStatus");

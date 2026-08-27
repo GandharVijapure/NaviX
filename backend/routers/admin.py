@@ -18,10 +18,19 @@ router = APIRouter(prefix="/api/admin", tags=["Admin / Analytics"])
 
 @router.get("/stats")
 def dashboard_stats(db: Session = Depends(get_db), _admin: User = Depends(require_admin)):
-    """Top stat cards for the control-room dashboard (spec section 9)."""
+    """Top stat cards for the control-room dashboard (spec sections 9/28)."""
     active_sos = db.query(models.Emergency).filter(models.Emergency.status != models.EmergencyStatus.resolved).count()
+    critical_sos = db.query(models.Emergency).filter(
+        models.Emergency.status != models.EmergencyStatus.resolved,
+        models.Emergency.priority == models.EmergencyPriority.critical,
+    ).count()
     volunteers_online = db.query(models.Volunteer).filter(models.Volunteer.status != models.VolunteerStatus.offline).count()
     devices_online = db.query(models.Device).filter(models.Device.status == models.DeviceStatus.online).count()
+    lora_nodes_online = db.query(models.Device).filter(
+        models.Device.status == models.DeviceStatus.online,
+        models.Device.device_type == models.DeviceType.volunteer_node,
+    ).count()
+    gateways_online = db.query(models.Gateway).filter(models.Gateway.status == models.GatewayStatus.online).count()
     medical_cases = db.query(models.Emergency).filter(
         models.Emergency.type == models.EmergencyType.medical,
         models.Emergency.status != models.EmergencyStatus.resolved,
@@ -33,14 +42,19 @@ def dashboard_stats(db: Session = Depends(get_db), _admin: User = Depends(requir
     active_alerts = db.query(models.Announcement).filter(
         (models.Announcement.expires_at.is_(None)) | (models.Announcement.expires_at > now)
     ).count()
+    open_facilities = db.query(models.Facility).filter(models.Facility.status == models.FacilityStatus.open).count()
 
     return {
         "active_sos": active_sos,
+        "critical_sos": critical_sos,
         "volunteers_online": volunteers_online,
         "devices_online": devices_online,
+        "lora_nodes_online": lora_nodes_online,
+        "gateways_online": gateways_online,
         "medical_cases": medical_cases,
         "missing_person_reports": missing_reports,
         "active_alerts": active_alerts,
+        "open_facilities": open_facilities,
     }
 
 

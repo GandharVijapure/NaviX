@@ -2,12 +2,14 @@
 Minimal WebSocket connection manager used to push live updates to every
 connected browser tab (public map, volunteer dashboard, control room).
 
-Messages are small JSON envelopes: {"event": "<event-name>", "data": {...}}.
+Messages are standardized JSON envelopes:
+{"event": "<event-name>", "data": {...}, "timestamp": "<ISO-8601>"}.
 Routers and the hardware simulator call `manager.broadcast(...)` after any
 DB write that other screens care about.
 """
 import json
 import logging
+from datetime import datetime
 from typing import Any
 
 from fastapi import WebSocket
@@ -28,7 +30,8 @@ class ConnectionManager:
             self.active_connections.remove(websocket)
 
     async def broadcast(self, event: str, data: Any) -> None:
-        message = json.dumps({"event": event, "data": data}, default=str)
+        envelope = {"event": event, "data": data, "timestamp": datetime.utcnow().isoformat()}
+        message = json.dumps(envelope, default=str)
         dead: list[WebSocket] = []
         for connection in self.active_connections:
             try:
@@ -37,6 +40,9 @@ class ConnectionManager:
                 dead.append(connection)
         for connection in dead:
             self.disconnect(connection)
+
+    def connection_count(self) -> int:
+        return len(self.active_connections)
 
 
 # Single shared instance imported across routers/services/simulator.

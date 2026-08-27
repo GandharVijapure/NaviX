@@ -20,7 +20,7 @@
         </div>
         <div class="table-responsive">
           <table class="table align-middle mb-0">
-            <thead><tr><th>Device ID</th><th>Linked Volunteer</th><th>Status</th><th>Battery</th><th>Last Seen</th><th>Location</th></tr></thead>
+            <thead><tr><th>Device ID</th><th>Type</th><th>Role</th><th>Linked Volunteer</th><th>Status</th><th>Battery</th><th>RSSI/SNR</th><th>Firmware</th><th>Last Seen</th><th>Location</th></tr></thead>
             <tbody id="rows"></tbody>
           </table>
         </div>
@@ -44,13 +44,16 @@
       document.getElementById("rows").innerHTML = devices
         .map((d) => {
           const linked = d.volunteer_id ? volunteerById[d.volunteer_id] : null;
-          const secondsAgo = (Date.now() - new Date(d.last_seen + "Z")) / 1000;
-          const isStale = secondsAgo > 30;
+          const status = d.is_stale ? "offline" : d.status;
           return `<tr>
             <td>${d.device_id}</td>
+            <td class="small text-capitalize">${d.device_type.replace("_", " ")}</td>
+            <td class="small text-capitalize">${d.node_role.replace("_", " ")}</td>
             <td>${linked ? linked.name : "—"}</td>
-            <td><span class="status-pill ${isStale ? "offline" : d.status}">${isStale ? "stale" : d.status}</span></td>
+            <td><span class="status-pill ${status}">${d.is_stale ? "stale" : d.status}</span></td>
             <td>${d.battery}%</td>
+            <td class="small">${d.last_rssi != null ? d.last_rssi + " dBm / " + d.last_snr + " dB" : "—"}</td>
+            <td class="small">${d.firmware_version || "—"}</td>
             <td>${new Date(d.last_seen + "Z").toLocaleTimeString()}</td>
             <td class="small text-navix-muted">${d.latitude != null ? d.latitude.toFixed(4) + ", " + d.longitude.toFixed(4) : "—"}</td>
           </tr>`;
@@ -58,7 +61,7 @@
         .join("");
     }
 
-    NaviXSocket.on("device_update", load);
+    NaviXSocket.on("device_updated", load);
     load();
     setInterval(load, 10000);
   </script>

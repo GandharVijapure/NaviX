@@ -20,7 +20,10 @@
         <div id="map" class="navix-map"></div>
       </div>
       <div class="col-lg-5">
-        <h4 class="section-title mb-2">All Facilities</h4>
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+          <h4 class="section-title mb-0">All Facilities</h4>
+          <span id="offlineDataNote" class="offline-data-note" style="display:none;"></span>
+        </div>
         <div class="d-flex gap-2 flex-wrap mb-3" id="typeFilters">
           <button class="btn btn-sm btn-navix-outline active" data-type="" style="min-height:36px;">All</button>
           <button class="btn btn-sm btn-navix-outline" data-type="medical" style="min-height:36px;">🚑 Medical</button>
@@ -45,6 +48,8 @@
   <script src="/js/geo.js"></script>
   <script src="/js/map.js"></script>
   <script src="/js/ws.js"></script>
+  <script src="/js/offline-db.js"></script>
+  <script src="/js/sync-manager.js"></script>
   <script src="/js/pwa-register.js"></script>
   <script>
     NaviXLayout.renderPublicNavbar("/facilities");
@@ -60,14 +65,36 @@
       await load();
     }
 
+    function showOfflineNote(updatedAt) {
+      const note = document.getElementById("offlineDataNote");
+      if (!updatedAt) {
+        note.style.display = "none";
+        return;
+      }
+      const label = new Date(updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      note.textContent = `📴 Offline data — last updated at ${label}`;
+      note.style.display = "inline-flex";
+    }
+
     async function load() {
       const query = currentType ? `?type=${currentType}` : "";
       let facilities = [];
       try {
         facilities = await NaviXApi.get(`/api/facilities${query}`);
+        showOfflineNote(null); // live data -- hide the cache notice
+        NaviXDB.saveFacilities(facilities).catch(() => {});
       } catch (e) {
-        document.getElementById("facilityList").innerHTML = `<p class="text-navix-muted">Offline — can't load the facility directory.</p>`;
-        return;
+        // Server unreachable -- fall back to the last cached copy instead of
+        // pretending nothing is available (spec section 6: never claim
+        // offline data is live).
+        const cached = await NaviXDB.getAll("facilities").catch(() => []);
+        const updatedAt = await NaviXDB.getMetadata("facilities_updated_at").catch(() => null);
+        if (!cached.length) {
+          document.getElementById("facilityList").innerHTML = `<p class="text-navix-muted">Offline — no cached facility data on this device yet.</p>`;
+          return;
+        }
+        facilities = currentType ? cached.filter((f) => f.type === currentType) : cached;
+        showOfflineNote(updatedAt);
       }
       markers.forEach((m) => map.removeLayer(m));
       markers = [];

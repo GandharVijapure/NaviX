@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>Authorities – NaviX Control Room</title>
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link href="/css/style.css" rel="stylesheet" />
+</head>
+<body>
+  <div class="admin-shell">
+    <div id="navix-admin-sidebar"></div>
+    <main class="admin-main">
+      <div id="navix-admin-topbar"></div>
+
+      <div class="row g-3">
+        <div class="col-lg-7">
+          <div class="navix-card p-3">
+            <h6 class="fw-bold mb-3">Authorities</h6>
+            <div class="table-responsive">
+              <table class="table align-middle mb-0">
+                <thead><tr><th>Name</th><th>Type</th><th>Contact</th><th>Active</th><th></th></tr></thead>
+                <tbody id="rows"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="col-lg-5">
+          <div class="navix-card p-3">
+            <h6 class="fw-bold mb-3" id="formTitle">Add Authority</h6>
+            <form id="form">
+              <input type="hidden" name="id" />
+              <div class="mb-2"><input name="name" required class="form-control" placeholder="Authority name" /></div>
+              <div class="mb-2">
+                <select name="type" required class="form-select">
+                  <option value="police">Police</option>
+                  <option value="medical">Medical</option>
+                  <option value="crowd_management">Crowd Management</option>
+                  <option value="disaster_management">Disaster Management</option>
+                  <option value="missing_person">Missing Person Coordination</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div class="mb-2"><input name="contact" class="form-control" placeholder="Contact number" /></div>
+              <div class="row g-2 mb-2">
+                <div class="col-6"><input name="latitude" type="number" step="any" class="form-control" placeholder="Latitude (optional)" /></div>
+                <div class="col-6"><input name="longitude" type="number" step="any" class="form-control" placeholder="Longitude (optional)" /></div>
+              </div>
+              <div class="mb-3"><textarea name="notes" class="form-control" rows="2" placeholder="Notes"></textarea></div>
+              <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-navix-primary flex-grow-1">Save Authority</button>
+                <button type="button" id="resetFormBtn" class="btn btn-navix-outline">Clear</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/auth.js"></script>
+  <script src="/js/layout.js"></script>
+  <script src="/js/pwa-register.js"></script>
+  <script>
+    NaviXAuth.requireRole("admin", "/admin/login");
+    NaviXLayout.renderAdminShell("/admin/authorities", "Authorities");
+
+    async function load() {
+      const authorities = await NaviXApi.get("/api/authorities");
+      document.getElementById("rows").innerHTML = authorities
+        .map(
+          (a) => `<tr>
+            <td>${a.name}</td>
+            <td class="text-capitalize">${a.type.replace("_", " ")}</td>
+            <td>${a.contact || "—"}</td>
+            <td><span class="status-pill ${a.active ? "available" : "offline"}">${a.active ? "active" : "inactive"}</span></td>
+            <td>
+              <button class="btn btn-sm btn-navix-outline edit-btn" data-id="${a.id}" style="min-height:32px;">Edit</button>
+              <button class="btn btn-sm btn-outline-danger delete-btn" data-id="${a.id}" style="min-height:32px;">Delete</button>
+            </td>
+          </tr>`
+        )
+        .join("") || `<tr><td colspan="5" class="text-navix-muted">No authorities added yet.</td></tr>`;
+
+      document.querySelectorAll(".edit-btn").forEach((btn) =>
+        btn.addEventListener("click", () => {
+          const a = authorities.find((x) => x.id === Number(btn.getAttribute("data-id")));
+          const form = document.getElementById("form");
+          form.id.value = a.id;
+          form.name.value = a.name;
+          form.type.value = a.type;
+          form.contact.value = a.contact || "";
+          form.latitude.value = a.latitude ?? "";
+          form.longitude.value = a.longitude ?? "";
+          form.notes.value = a.notes || "";
+          document.getElementById("formTitle").textContent = `Edit Authority #${a.id}`;
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        })
+      );
+      document.querySelectorAll(".delete-btn").forEach((btn) =>
+        btn.addEventListener("click", async () => {
+          if (!confirm("Remove this authority?")) return;
+          await NaviXApi.delete(`/api/authorities/${btn.getAttribute("data-id")}`);
+          load();
+        })
+      );
+    }
+
+    document.getElementById("resetFormBtn").addEventListener("click", () => {
+      const form = document.getElementById("form");
+      form.reset();
+      form.id.value = "";
+      document.getElementById("formTitle").textContent = "Add Authority";
+    });
+
+    document.getElementById("form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const form = e.target;
+      const payload = {
+        name: form.name.value,
+        type: form.type.value,
+        contact: form.contact.value || null,
+        latitude: form.latitude.value ? parseFloat(form.latitude.value) : null,
+        longitude: form.longitude.value ? parseFloat(form.longitude.value) : null,
+        notes: form.notes.value || null,
+      };
+      if (form.id.value) {
+        await NaviXApi.put(`/api/authorities/${form.id.value}`, payload);
+      } else {
+        await NaviXApi.post("/api/authorities", payload);
+      }
+      form.reset();
+      form.id.value = "";
+      document.getElementById("formTitle").textContent = "Add Authority";
+      load();
+    });
+
+    load();
+  </script>
+</body>
+</html>

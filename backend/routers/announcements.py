@@ -14,7 +14,7 @@ from .. import schemas
 from ..auth import require_admin
 from ..database import get_db
 from ..models import Announcement, User
-from ..services.notification_service import notify_announcement
+from ..services.notification_service import notify_announcement_created, notify_announcement_updated
 
 router = APIRouter(prefix="/api/announcements", tags=["Announcements"])
 
@@ -48,7 +48,7 @@ async def create_announcement(
     db.add(announcement)
     db.commit()
     db.refresh(announcement)
-    await notify_announcement(schemas.AnnouncementOut.model_validate(announcement).model_dump())
+    await notify_announcement_created(schemas.AnnouncementOut.model_validate(announcement).model_dump())
     return announcement
 
 
@@ -63,7 +63,7 @@ async def update_announcement(
         setattr(announcement, field, value)
     db.commit()
     db.refresh(announcement)
-    await notify_announcement(schemas.AnnouncementOut.model_validate(announcement).model_dump())
+    await notify_announcement_updated(schemas.AnnouncementOut.model_validate(announcement).model_dump())
     return announcement
 
 
@@ -75,4 +75,4 @@ async def delete_announcement(announcement_id: int, db: Session = Depends(get_db
     announcement_id_value = announcement.id
     db.delete(announcement)
     db.commit()
-    await notify_announcement({"id": announcement_id_value, "deleted": True})
+    await notify_announcement_updated({"id": announcement_id_value, "deleted": True})

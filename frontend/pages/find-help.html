@@ -39,7 +39,10 @@
       </div>
     </div>
 
-    <h3 class="section-title mt-5 mb-3" data-i18n="nearby_facilities">Nearby Facilities</h3>
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-5 mb-3">
+      <h3 class="section-title mb-0" data-i18n="nearby_facilities">Nearby Facilities</h3>
+      <span id="offlineDataNote" class="offline-data-note" style="display:none;"></span>
+    </div>
     <div class="d-flex gap-2 flex-wrap mb-3" id="facilityFilters">
       <button class="btn btn-sm btn-navix-outline active" data-type="" style="min-height:38px;">All</button>
       <button class="btn btn-sm btn-navix-outline" data-type="medical" style="min-height:38px;">Medical</button>
@@ -62,6 +65,9 @@
   <script src="/js/layout.js"></script>
   <script src="/js/geo.js"></script>
   <script src="/js/map.js"></script>
+  <script src="/js/offline-db.js"></script>
+  <script src="/js/sync-manager.js"></script>
+  <script src="/js/navigation-engine.js"></script>
   <script src="/js/pwa-register.js"></script>
   <script>
     NaviXLayout.renderPublicNavbar("/find-help");
@@ -70,34 +76,57 @@
     let currentType = "";
     let userLoc = null;
 
-    async function loadFacilities() {
+    function renderFacilityCards(facilities) {
       const listEl = document.getElementById("facilityList");
+      if (!facilities.length) {
+        listEl.innerHTML = `<p class="text-navix-muted">No facilities found nearby yet.</p>`;
+        return;
+      }
+      listEl.innerHTML = facilities
+        .map((f) => {
+          const distanceLabel = f.distance_km < 1 ? `${Math.round(f.distance_km * 1000)} m away` : `${f.distance_km.toFixed(1)} km away`;
+          return `
+          <div class="facility-card">
+            <div class="facility-icon ${f.type}">${NaviXMap.ICONS[f.type] || "📌"}</div>
+            <div class="flex-grow-1">
+              <div class="fw-bold">${f.name}</div>
+              <div class="text-navix-muted small">${NaviXMap.facilityTypeLabel(f.type)} · ${distanceLabel}</div>
+              ${NaviXMap.facilityStatusBadge(f.status)}
+            </div>
+            <a class="btn btn-sm btn-navix-primary" style="min-height:44px;" href="/navigation?facility=${f.id}" data-i18n="btn_navigate">Navigate</a>
+          </div>`;
+        })
+        .join("");
+    }
+
+    async function loadFacilities() {
+      const noteEl = document.getElementById("offlineDataNote");
       try {
         userLoc = userLoc || (await NaviXGeo.getCurrentPosition());
         const query = new URLSearchParams({ lat: userLoc.lat, lon: userLoc.lon });
         if (currentType) query.set("type", currentType);
         const facilities = await NaviXApi.get(`/api/facilities/nearby?${query.toString()}`);
-        if (!facilities.length) {
-          listEl.innerHTML = `<p class="text-navix-muted">No facilities found nearby yet.</p>`;
+        noteEl.style.display = "none";
+        NaviXDB.saveFacilities(facilities).catch(() => {});
+        renderFacilityCards(facilities);
+      } catch (e) {
+        // Genuinely fall back to the last cached copy -- never claim this
+        // is live data (spec section 6).
+        const cached = await NaviXDB.getAll("facilities").catch(() => []);
+        const updatedAt = await NaviXDB.getMetadata("facilities_updated_at").catch(() => null);
+        if (!cached.length) {
+          document.getElementById("facilityList").innerHTML = `<p class="text-navix-muted">Offline — no cached facility data on this device yet. Connect once to download it.</p>`;
           return;
         }
-        listEl.innerHTML = facilities
-          .map((f) => {
-            const distanceLabel = f.distance_km < 1 ? `${Math.round(f.distance_km * 1000)} m away` : `${f.distance_km.toFixed(1)} km away`;
-            return `
-            <div class="facility-card">
-              <div class="facility-icon ${f.type}">${NaviXMap.ICONS[f.type] || "📌"}</div>
-              <div class="flex-grow-1">
-                <div class="fw-bold">${f.name}</div>
-                <div class="text-navix-muted small">${NaviXMap.facilityTypeLabel(f.type)} · ${distanceLabel}</div>
-                ${NaviXMap.facilityStatusBadge(f.status)}
-              </div>
-              <a class="btn btn-sm btn-navix-primary" style="min-height:44px;" href="/navigation?facility=${f.id}" data-i18n="btn_navigate">Navigate</a>
-            </div>`;
-          })
-          .join("");
-      } catch (e) {
-        listEl.innerHTML = `<p class="text-navix-muted">Could not load facilities (offline or server unreachable). Showing cached data if available.</p>`;
+        const loc = userLoc || NaviXGeo.getCached() || NaviXGeo.FALLBACK;
+        const facilities = (currentType ? cached.filter((f) => f.type === currentType) : cached)
+          .map((f) => ({ ...f, distance_km: NaviXNavEngine.haversineKm(loc.lat, loc.lon, f.latitude, f.longitude) }))
+          .sort((a, b) => a.distance_km - b.distance_km);
+        if (updatedAt) {
+          noteEl.textContent = `📴 Offline data — last updated at ${new Date(updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+          noteEl.style.display = "inline-flex";
+        }
+        renderFacilityCards(facilities);
       }
     }
 

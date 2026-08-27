@@ -14,9 +14,27 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 
+from . import simulator
+from .config import APP_VERSION, CORS_ORIGINS
 from .database import Base, SessionLocal, engine
-from .routers import admin, announcements, auth, devices, emergencies, facilities, lost_persons, navigation, volunteers
+from .routers import (
+    admin,
+    announcements,
+    authorities,
+    auth,
+    devices,
+    dispatches,
+    emergencies,
+    facilities,
+    gateways,
+    lost_persons,
+    navigation,
+    routes,
+    volunteers,
+)
+from .schemas import HealthOut
 from .seed import seed_if_empty
 from .websocket_manager import manager
 
@@ -34,29 +52,34 @@ app = FastAPI(
     title="NaviX API",
     description="Emergency communication, navigation and coordination system for large public gatherings. "
     "Connecting Every Step, Even Without Networks.",
-    version="1.0.0",
+    version=APP_VERSION,
 )
 
 # Wide-open CORS in dev so the frontend can be opened from any origin while
-# testing; tighten this to specific origins before a real deployment.
+# testing; set CORS_ORIGINS to specific origins before a real deployment.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # ---------------------------------------------------------------------------
-# Routers, grouped by domain (spec section 27)
+# Routers, grouped by domain (spec section 27/46)
 # ---------------------------------------------------------------------------
 app.include_router(auth.router)
 app.include_router(facilities.router)
+app.include_router(routes.router)
 app.include_router(volunteers.router)
 app.include_router(devices.router)
+app.include_router(gateways.router)
+app.include_router(gateways.message_router)
 app.include_router(emergencies.router)
 app.include_router(announcements.router)
 app.include_router(lost_persons.router)
+app.include_router(authorities.router)
+app.include_router(dispatches.router)
 app.include_router(navigation.router)
 app.include_router(admin.router)
 
@@ -70,6 +93,26 @@ def on_startup() -> None:
     finally:
         db.close()
     logger.info("NaviX backend ready.")
+
+
+@app.get("/api/health", response_model=HealthOut, tags=["System"])
+def health_check() -> HealthOut:
+    """Simple liveness/readiness probe (spec section 76). Exposes nothing
+    secret -- just enough for a demo/monitoring check."""
+    db_status = "connected"
+    try:
+        db = SessionLocal()
+        db.execute(text("SELECT 1"))
+        db.close()
+    except Exception:
+        db_status = "error"
+    return HealthOut(
+        status="ok" if db_status == "connected" else "degraded",
+        database=db_status,
+        websocket_connections=manager.connection_count(),
+        simulation_running=simulator.is_running(),
+        version=APP_VERSION,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -134,11 +177,16 @@ PAGE_ROUTES = {
     "/admin/emergencies": "admin-emergencies.html",
     "/admin/volunteers": "admin-volunteers.html",
     "/admin/devices": "admin-devices.html",
+    "/admin/gateways": "admin-gateways.html",
+    "/admin/network": "admin-network.html",
     "/admin/facilities": "admin-facilities.html",
+    "/admin/routes": "admin-routes.html",
     "/admin/announcements": "admin-announcements.html",
     "/admin/lost-persons": "admin-lost-persons.html",
+    "/admin/authorities": "admin-authorities.html",
     "/admin/analytics": "admin-analytics.html",
     "/developer/device-simulator": "developer-simulator.html",
+    "/developer/architecture": "architecture.html",
 }
 
 
