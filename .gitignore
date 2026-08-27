@@ -1,0 +1,10 @@
+venv/
+__pycache__/
+*.pyc
+navix.db
+backend/static/uploads/*
+!backend/static/uploads/.gitkeep
+uvicorn_out.log
+uvicorn_err.log
+pid.txt
+.env

@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>Alerts – NaviX</title>
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#0b2545" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link href="/css/style.css" rel="stylesheet" />
+</head>
+<body>
+  <div id="navix-navbar"></div>
+
+  <div class="container py-4" style="max-width:680px;">
+    <h2 class="section-title mb-3">Announcements &amp; Alerts</h2>
+    <div id="announcementList" class="d-flex flex-column gap-3">
+      <p class="text-navix-muted">Loading announcements…</p>
+    </div>
+  </div>
+
+  <div id="navix-footer"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/auth.js"></script>
+  <script src="/js/i18n.js"></script>
+  <script src="/js/layout.js"></script>
+  <script src="/js/ws.js"></script>
+  <script src="/js/pwa-register.js"></script>
+  <script>
+    NaviXLayout.renderPublicNavbar("/alerts");
+    NaviXLayout.renderFooter();
+    NaviXLayout.renderSosFab();
+
+    const CATEGORY_LABELS = {
+      general: "General", route_diversion: "Route Diversion", medical: "Medical",
+      weather: "Weather", emergency: "Emergency", missing_person: "Missing Person", facility_update: "Facility Update",
+    };
+    const CATEGORY_ICONS = {
+      general: "📋", route_diversion: "🚧", medical: "🚑", weather: "🌦️",
+      emergency: "⚠️", missing_person: "🔍", facility_update: "🏥",
+    };
+
+    function timeAgo(iso) {
+      const diffMin = Math.max(0, Math.round((Date.now() - new Date(iso + "Z")) / 60000));
+      if (diffMin < 60) return `${diffMin} min ago`;
+      const diffHr = Math.round(diffMin / 60);
+      return `${diffHr} hr ago`;
+    }
+
+    function renderCard(a) {
+      const priorityClass = a.priority === "critical" ? "border-danger" : a.priority === "important" ? "border-warning" : "";
+      const priorityBadge =
+        a.priority === "critical" ? '<span class="badge bg-danger">CRITICAL</span>' :
+        a.priority === "important" ? '<span class="badge bg-warning text-dark">IMPORTANT</span>' : "";
+      return `
+      <div class="navix-card p-3 ${priorityClass}" style="border-width:${a.priority === 'critical' ? '2px' : '1px'};">
+        <div class="d-flex justify-content-between align-items-start">
+          <div class="fw-bold">${CATEGORY_ICONS[a.category] || "📋"} ${a.title}</div>
+          ${priorityBadge}
+        </div>
+        <div class="text-navix-muted small mb-2">${CATEGORY_LABELS[a.category] || a.category} · ${timeAgo(a.created_at)}</div>
+        <div>${a.message}</div>
+      </div>`;
+    }
+
+    async function loadAnnouncements() {
+      const listEl = document.getElementById("announcementList");
+      try {
+        const announcements = await NaviXApi.get("/api/announcements/active");
+        listEl.innerHTML = announcements.length
+          ? announcements.map(renderCard).join("")
+          : `<p class="text-navix-muted">No active announcements right now.</p>`;
+      } catch (e) {
+        listEl.innerHTML = `<p class="text-navix-muted">Could not load announcements (offline). Showing last known alerts if cached.</p>`;
+      }
+    }
+
+    NaviXSocket.on("announcement", loadAnnouncements);
+    loadAnnouncements();
+  </script>
+</body>
+</html>

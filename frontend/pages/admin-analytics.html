@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>Analytics – NaviX Control Room</title>
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link href="/css/style.css" rel="stylesheet" />
+</head>
+<body>
+  <div class="admin-shell">
+    <div id="navix-admin-sidebar"></div>
+    <main class="admin-main">
+      <div id="navix-admin-topbar"></div>
+
+      <div class="row g-3">
+        <div class="col-md-3 col-6"><div class="stat-card"><div class="stat-value" id="totalEmergencies">–</div><div class="stat-label">Total Emergencies</div></div></div>
+        <div class="col-md-3 col-6"><div class="stat-card success"><div class="stat-value" id="resolvedCases">–</div><div class="stat-label">Resolved Cases</div></div></div>
+        <div class="col-md-3 col-6"><div class="stat-card orange"><div class="stat-value" id="avgResponse">–</div><div class="stat-label">Avg Response (min)</div></div></div>
+        <div class="col-md-3 col-6"><div class="stat-card"><div class="stat-value" id="devicesOnlineStat">–</div><div class="stat-label">Devices Online</div></div></div>
+      </div>
+
+      <div class="row g-3 mt-1">
+        <div class="col-md-6">
+          <div class="navix-card p-3">
+            <h6 class="fw-bold mb-2">Emergencies by Category</h6>
+            <div id="byCategory"></div>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="navix-card p-3">
+            <h6 class="fw-bold mb-2">Volunteer Availability</h6>
+            <div id="volAvailability"></div>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="navix-card p-3">
+            <h6 class="fw-bold mb-2">Facility Distribution</h6>
+            <div id="facilityDist"></div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/auth.js"></script>
+  <script src="/js/layout.js"></script>
+  <script src="/js/pwa-register.js"></script>
+  <script>
+    NaviXAuth.requireRole("admin", "/admin/login");
+    NaviXLayout.renderAdminShell("/admin/analytics", "Analytics");
+
+    function bar(label, value, max) {
+      const pct = max ? Math.round((value / max) * 100) : 0;
+      return `<div class="mb-2">
+        <div class="d-flex justify-content-between small"><span class="text-capitalize">${label.replace("_", " ")}</span><span>${value}</span></div>
+        <div class="progress" style="height:8px;"><div class="progress-bar" style="width:${pct}%; background:var(--navix-navy);"></div></div>
+      </div>`;
+    }
+
+    async function load() {
+      const a = await NaviXApi.get("/api/admin/analytics");
+      document.getElementById("totalEmergencies").textContent = a.total_emergencies;
+      document.getElementById("resolvedCases").textContent = a.resolved_cases;
+      document.getElementById("avgResponse").textContent = a.average_response_minutes;
+      document.getElementById("devicesOnlineStat").textContent = a.devices_online;
+
+      const catMax = Math.max(1, ...Object.values(a.emergencies_by_category));
+      document.getElementById("byCategory").innerHTML =
+        Object.entries(a.emergencies_by_category).map(([k, v]) => bar(k, v, catMax)).join("") || `<p class="text-navix-muted small">No data yet.</p>`;
+
+      const volMax = Math.max(1, ...Object.values(a.volunteer_availability));
+      document.getElementById("volAvailability").innerHTML =
+        Object.entries(a.volunteer_availability).map(([k, v]) => bar(k, v, volMax)).join("") || `<p class="text-navix-muted small">No data yet.</p>`;
+
+      const facMax = Math.max(1, ...Object.values(a.facility_distribution));
+      document.getElementById("facilityDist").innerHTML =
+        Object.entries(a.facility_distribution).map(([k, v]) => bar(k, v, facMax)).join("") || `<p class="text-navix-muted small">No data yet.</p>`;
+    }
+
+    load();
+    setInterval(load, 20000);
+  </script>
+</body>
+</html>

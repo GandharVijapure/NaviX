@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>Facilities – NaviX</title>
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#0b2545" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link href="/css/style.css" rel="stylesheet" />
+</head>
+<body>
+  <div id="navix-navbar"></div>
+
+  <div class="container-fluid py-3">
+    <div class="row g-3">
+      <div class="col-lg-7">
+        <div id="map" class="navix-map"></div>
+      </div>
+      <div class="col-lg-5">
+        <h4 class="section-title mb-2">All Facilities</h4>
+        <div class="d-flex gap-2 flex-wrap mb-3" id="typeFilters">
+          <button class="btn btn-sm btn-navix-outline active" data-type="" style="min-height:36px;">All</button>
+          <button class="btn btn-sm btn-navix-outline" data-type="medical" style="min-height:36px;">🚑 Medical</button>
+          <button class="btn btn-sm btn-navix-outline" data-type="police" style="min-height:36px;">👮 Police</button>
+          <button class="btn btn-sm btn-navix-outline" data-type="water" style="min-height:36px;">💧 Water</button>
+          <button class="btn btn-sm btn-navix-outline" data-type="food" style="min-height:36px;">🍲 Food</button>
+          <button class="btn btn-sm btn-navix-outline" data-type="help_centre" style="min-height:36px;">🛈 Help</button>
+        </div>
+        <div id="facilityList" class="d-flex flex-column gap-2" style="max-height:62vh; overflow-y:auto;"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="navix-footer"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/auth.js"></script>
+  <script src="/js/i18n.js"></script>
+  <script src="/js/layout.js"></script>
+  <script src="/js/geo.js"></script>
+  <script src="/js/map.js"></script>
+  <script src="/js/ws.js"></script>
+  <script src="/js/pwa-register.js"></script>
+  <script>
+    NaviXLayout.renderPublicNavbar("/facilities");
+    NaviXLayout.renderFooter();
+    NaviXLayout.renderSosFab();
+
+    let map, markers = [];
+    let currentType = "";
+
+    async function init() {
+      const center = NaviXGeo.getCached() || NaviXGeo.FALLBACK;
+      map = NaviXMap.initMap("map", center, 14);
+      await load();
+    }
+
+    async function load() {
+      const query = currentType ? `?type=${currentType}` : "";
+      let facilities = [];
+      try {
+        facilities = await NaviXApi.get(`/api/facilities${query}`);
+      } catch (e) {
+        document.getElementById("facilityList").innerHTML = `<p class="text-navix-muted">Offline — can't load the facility directory.</p>`;
+        return;
+      }
+      markers.forEach((m) => map.removeLayer(m));
+      markers = [];
+      const listEl = document.getElementById("facilityList");
+      listEl.innerHTML = facilities
+        .map((f) => {
+          return `
+          <div class="facility-card">
+            <div class="facility-icon ${f.type}">${NaviXMap.ICONS[f.type] || "📌"}</div>
+            <div class="flex-grow-1">
+              <div class="fw-bold">${f.name}</div>
+              <div class="text-navix-muted small">${NaviXMap.facilityTypeLabel(f.type)} · ${f.opening_time || "--"}–${f.closing_time || "--"}</div>
+              ${NaviXMap.facilityStatusBadge(f.status)}
+            </div>
+            <a class="btn btn-sm btn-navix-primary" style="min-height:44px;" href="/navigation?facility=${f.id}">Navigate</a>
+          </div>`;
+        })
+        .join("");
+
+      facilities.forEach((f) => {
+        const marker = L.marker([f.latitude, f.longitude], { icon: NaviXMap.divIcon(f.type) })
+          .addTo(map)
+          .bindPopup(`<strong>${f.name}</strong><br>${NaviXMap.facilityTypeLabel(f.type)}`);
+        markers.push(marker);
+      });
+    }
+
+    document.getElementById("typeFilters").addEventListener("click", (e) => {
+      const btn = e.target.closest("button[data-type]");
+      if (!btn) return;
+      document.querySelectorAll("#typeFilters button").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      currentType = btn.getAttribute("data-type");
+      load();
+    });
+
+    NaviXSocket.on("facility_update", load);
+    init();
+  </script>
+</body>
+</html>

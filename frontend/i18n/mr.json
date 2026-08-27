@@ -1,0 +1,20 @@
+{
+  "nav_home": "मुख्यपृष्ठ",
+  "nav_find_help": "मदत शोधा",
+  "nav_navigation": "नेव्हिगेशन",
+  "nav_lost_person": "हरवलेली व्यक्ती",
+  "nav_alerts": "सूचना",
+  "nav_volunteer_login": "स्वयंसेवक लॉगिन",
+  "nav_control_room": "नियंत्रण कक्ष",
+  "hero_title": "आणीबाणी मदत. नेव्हिगेशन. संवाद. नेटवर्क नसतानाही.",
+  "btn_find_help": "जवळची मदत शोधा",
+  "btn_send_sos": "SOS पाठवा",
+  "action_medical": "वैद्यकीय मदत",
+  "action_police": "पोलीस मदत",
+  "action_food_water": "अन्न व पाणी",
+  "action_sos": "आणीबाणी SOS",
+  "nearby_facilities": "जवळच्या सुविधा",
+  "btn_navigate": "मार्गदर्शन करा",
+  "sos_sent": "SOS यशस्वीरित्या पाठवले",
+  "offline_active": "ऑफलाइन मोड सक्रिय"
+}

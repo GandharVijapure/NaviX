@@ -1,0 +1,396 @@
+/* =========================================================================
+   NaviX design system
+   "Connecting Every Step, Even Without Networks"
+
+   Deliberately NOT a generic admin-template look: warm, high-contrast,
+   large touch targets, minimal chrome. Built to sit on top of Bootstrap 5
+   (loaded via CDN in every page <head>) -- this file overrides Bootstrap's
+   defaults with NaviX's own tokens rather than fighting them.
+   ========================================================================= */
+
+:root {
+  /* Brand palette (spec section 19) */
+  --navix-navy: #0b2545;
+  --navix-navy-light: #13355e;
+  --navix-orange: #ff6b35;
+  --navix-orange-dark: #e05420;
+  --navix-blue: #1e88e5;
+  --navix-success: #1c9d5b;
+  --navix-danger: #e02424;
+  --navix-bg: #f6f7fb;
+  --navix-card-bg: #ffffff;
+  --navix-text: #16213e;
+  --navix-text-muted: #5b667a;
+  --navix-border: #e3e7ef;
+
+  --navix-radius: 14px;
+  --navix-radius-sm: 10px;
+  --navix-shadow: 0 2px 10px rgba(11, 37, 69, 0.08);
+  --navix-shadow-lg: 0 8px 28px rgba(11, 37, 69, 0.14);
+
+  --navix-touch: 56px; /* minimum touch target height */
+}
+
+html, body {
+  background: var(--navix-bg);
+  color: var(--navix-text);
+  font-family: "Segoe UI", Roboto, "Noto Sans", Arial, sans-serif;
+  font-size: 17px;
+  scroll-behavior: smooth;
+}
+
+a { color: var(--navix-blue); }
+
+/* ---------------------------------------------------------------------- */
+/* Top navigation                                                          */
+/* ---------------------------------------------------------------------- */
+.navix-navbar {
+  background: var(--navix-navy);
+  box-shadow: var(--navix-shadow);
+}
+.navix-navbar .navbar-brand {
+  font-weight: 800;
+  font-size: 1.4rem;
+  color: #fff !important;
+  letter-spacing: 0.5px;
+}
+.navix-navbar .navbar-brand small {
+  display: block;
+  font-weight: 400;
+  font-size: 0.7rem;
+  color: #b9c6e0;
+  letter-spacing: 0.3px;
+}
+.navix-navbar .nav-link {
+  color: #dbe3f2 !important;
+  font-weight: 500;
+}
+.navix-navbar .nav-link.active,
+.navix-navbar .nav-link:hover {
+  color: #fff !important;
+}
+.navix-navbar .btn-volunteer {
+  background: transparent;
+  border: 1px solid #4a6386;
+  color: #fff;
+}
+.navix-navbar .btn-control-room {
+  background: var(--navix-orange);
+  border: none;
+  color: #fff;
+  font-weight: 700;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Hero / landing                                                          */
+/* ---------------------------------------------------------------------- */
+.navix-hero {
+  background: linear-gradient(160deg, var(--navix-navy) 0%, var(--navix-navy-light) 60%, #1c4a7a 100%);
+  color: #fff;
+  padding: 4.5rem 1rem 3.5rem;
+}
+.navix-hero h1 {
+  font-weight: 800;
+  font-size: clamp(2rem, 5vw, 3.2rem);
+  line-height: 1.15;
+}
+.navix-hero p.lead {
+  color: #cdd9ef;
+  max-width: 620px;
+}
+.navix-hero .btn-hero-primary {
+  background: var(--navix-orange);
+  border: none;
+  color: #fff;
+  font-weight: 700;
+  min-height: var(--navix-touch);
+  padding: 0 1.75rem;
+  border-radius: var(--navix-radius-sm);
+}
+.navix-hero .btn-hero-primary:hover { background: var(--navix-orange-dark); color: #fff; }
+.navix-hero .btn-hero-secondary {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.35);
+  color: #fff;
+  font-weight: 700;
+  min-height: var(--navix-touch);
+  padding: 0 1.75rem;
+  border-radius: var(--navix-radius-sm);
+}
+
+/* Pilgrim -> Volunteer -> Mesh -> Base -> Authority flow diagram */
+.navix-flow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 2.5rem;
+}
+.navix-flow .node {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.25);
+  border-radius: var(--navix-radius-sm);
+  padding: 0.9rem 1.1rem;
+  text-align: center;
+  min-width: 120px;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.navix-flow .node .icon { font-size: 1.6rem; display: block; margin-bottom: 0.25rem; }
+.navix-flow .arrow { color: var(--navix-orange); font-size: 1.4rem; }
+
+/* ---------------------------------------------------------------------- */
+/* Cards                                                                    */
+/* ---------------------------------------------------------------------- */
+.navix-card {
+  background: var(--navix-card-bg);
+  border: 1px solid var(--navix-border);
+  border-radius: var(--navix-radius);
+  box-shadow: var(--navix-shadow);
+}
+
+.stat-card {
+  background: var(--navix-card-bg);
+  border-radius: var(--navix-radius);
+  box-shadow: var(--navix-shadow);
+  padding: 1.1rem 1.3rem;
+  border-left: 5px solid var(--navix-blue);
+}
+.stat-card .stat-value { font-size: 2rem; font-weight: 800; color: var(--navix-navy); line-height: 1; }
+.stat-card .stat-label { color: var(--navix-text-muted); font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; }
+.stat-card.danger { border-left-color: var(--navix-danger); }
+.stat-card.success { border-left-color: var(--navix-success); }
+.stat-card.orange { border-left-color: var(--navix-orange); }
+
+/* Facility / lost-person cards */
+.facility-card, .lost-person-card {
+  background: var(--navix-card-bg);
+  border: 1px solid var(--navix-border);
+  border-radius: var(--navix-radius);
+  box-shadow: var(--navix-shadow);
+  padding: 1rem 1.1rem;
+  display: flex;
+  gap: 0.9rem;
+  align-items: center;
+}
+.facility-card .facility-icon {
+  width: 52px; height: 52px; flex: none;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.5rem;
+  background: #eef3ff;
+}
+.facility-card .facility-icon.medical { background: #fde8e8; }
+.facility-card .facility-icon.police { background: #e8eefc; }
+.facility-card .facility-icon.water { background: #e3f4fb; }
+.facility-card .facility-icon.food { background: #fff2e0; }
+.facility-card .facility-icon.help_centre { background: #eafaf0; }
+.facility-card .facility-icon.ambulance { background: #fde8e8; }
+.facility-card .facility-icon.toilet { background: #f1f1f5; }
+
+.badge-open { background: var(--navix-success); }
+.badge-closed { background: var(--navix-text-muted); }
+
+/* ---------------------------------------------------------------------- */
+/* Pilgrim home: big action buttons                                        */
+/* ---------------------------------------------------------------------- */
+.big-action {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  background: var(--navix-card-bg);
+  border: 1px solid var(--navix-border);
+  border-radius: var(--navix-radius);
+  box-shadow: var(--navix-shadow);
+  padding: 1.4rem 0.5rem;
+  min-height: 118px;
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--navix-text);
+  text-decoration: none;
+  transition: transform 0.08s ease, box-shadow 0.08s ease;
+}
+.big-action:hover, .big-action:active { transform: translateY(-2px); box-shadow: var(--navix-shadow-lg); color: var(--navix-text); }
+.big-action .emoji { font-size: 2.1rem; }
+.big-action.sos { background: var(--navix-danger); color: #fff; border: none; }
+.big-action.sos:hover { color: #fff; }
+
+/* ---------------------------------------------------------------------- */
+/* SOS button + emergency banner                                           */
+/* ---------------------------------------------------------------------- */
+.sos-fab {
+  position: fixed;
+  right: 1.1rem;
+  bottom: 1.1rem;
+  z-index: 1050;
+  width: 68px; height: 68px;
+  border-radius: 50%;
+  background: var(--navix-danger);
+  color: #fff;
+  font-weight: 800;
+  font-size: 0.85rem;
+  border: none;
+  box-shadow: 0 6px 20px rgba(224,36,36,0.45);
+  display: flex; align-items: center; justify-content: center;
+  animation: navix-pulse 2.2s infinite;
+}
+@keyframes navix-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(224,36,36,0.5); }
+  70% { box-shadow: 0 0 0 16px rgba(224,36,36,0); }
+  100% { box-shadow: 0 0 0 0 rgba(224,36,36,0); }
+}
+
+.critical-banner {
+  background: var(--navix-danger);
+  color: #fff;
+  font-weight: 700;
+  padding: 0.7rem 1rem;
+  text-align: center;
+}
+.important-banner {
+  background: #fff3e0;
+  color: #7a4a00;
+  font-weight: 600;
+  padding: 0.6rem 1rem;
+  text-align: center;
+  border-bottom: 1px solid #ffe0b2;
+}
+
+.offline-banner {
+  display: none;
+  background: #2c2c2c;
+  color: #fff;
+  text-align: center;
+  padding: 0.5rem 1rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+body.navix-offline .offline-banner { display: block; }
+
+/* ---------------------------------------------------------------------- */
+/* Buttons                                                                  */
+/* ---------------------------------------------------------------------- */
+.btn-navix-primary {
+  background: var(--navix-navy);
+  border: none;
+  color: #fff;
+  font-weight: 700;
+  min-height: var(--navix-touch);
+  border-radius: var(--navix-radius-sm);
+}
+.btn-navix-primary:hover { background: var(--navix-navy-light); color: #fff; }
+.btn-navix-danger {
+  background: var(--navix-danger);
+  border: none;
+  color: #fff;
+  font-weight: 700;
+  min-height: var(--navix-touch);
+  border-radius: var(--navix-radius-sm);
+}
+.btn-navix-outline {
+  background: #fff;
+  border: 2px solid var(--navix-navy);
+  color: var(--navix-navy);
+  font-weight: 700;
+  min-height: var(--navix-touch);
+  border-radius: var(--navix-radius-sm);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Map                                                                      */
+/* ---------------------------------------------------------------------- */
+.navix-map {
+  width: 100%;
+  height: 60vh;
+  min-height: 340px;
+  border-radius: var(--navix-radius);
+  box-shadow: var(--navix-shadow);
+  z-index: 0;
+}
+.navix-map.tall { height: 74vh; }
+
+.direction-panel {
+  background: var(--navix-navy);
+  color: #fff;
+  border-radius: var(--navix-radius);
+  padding: 1.4rem;
+  text-align: center;
+}
+.direction-panel .arrow { font-size: 2.6rem; color: var(--navix-orange); }
+.direction-panel .instruction { font-size: 1.3rem; font-weight: 700; margin: 0.3rem 0; }
+.direction-panel .distance { font-size: 2.1rem; font-weight: 800; }
+.direction-panel .next-turn { color: #b9c6e0; font-size: 0.95rem; }
+
+/* Status pills used across volunteer/emergency/device tables */
+.status-pill {
+  display: inline-block;
+  padding: 0.25rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.status-pill.available, .status-pill.online, .status-pill.resolved, .status-pill.open, .status-pill.reunited { background: #e3f7ea; color: var(--navix-success); }
+.status-pill.responding, .status-pill.responder_assigned, .status-pill.acknowledged, .status-pill.possible_match { background: #fff3e0; color: #b3660a; }
+.status-pill.busy, .status-pill.new, .status-pill.missing { background: #fde8e8; color: var(--navix-danger); }
+.status-pill.offline, .status-pill.closed, .status-pill.found, .status-pill.stale { background: #ececf1; color: var(--navix-text-muted); }
+
+/* ---------------------------------------------------------------------- */
+/* Admin / control-room shell                                              */
+/* ---------------------------------------------------------------------- */
+.admin-shell { display: flex; min-height: 100vh; }
+.admin-sidebar {
+  width: 240px;
+  background: var(--navix-navy);
+  color: #dbe3f2;
+  flex: none;
+  padding: 1rem 0.6rem;
+  transition: width 0.15s ease;
+}
+.admin-sidebar a {
+  display: flex; align-items: center; gap: 0.6rem;
+  color: #cdd9ef;
+  text-decoration: none;
+  padding: 0.65rem 0.8rem;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.94rem;
+  margin-bottom: 0.15rem;
+}
+.admin-sidebar a.active, .admin-sidebar a:hover { background: rgba(255,255,255,0.1); color: #fff; }
+.admin-sidebar.collapsed { width: 68px; }
+.admin-sidebar.collapsed span.label { display: none; }
+.admin-main { flex: 1; min-width: 0; padding: 1.2rem 1.4rem 3rem; }
+.admin-topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 1.1rem;
+}
+
+@media (max-width: 860px) {
+  .admin-sidebar { position: fixed; z-index: 1040; height: 100%; left: -260px; }
+  .admin-sidebar.open { left: 0; }
+  .admin-main { padding: 1rem; }
+}
+
+/* ---------------------------------------------------------------------- */
+/* Accessibility helpers                                                   */
+/* ---------------------------------------------------------------------- */
+.btn, .form-control, .form-select { min-height: var(--navix-touch); }
+.btn { border-radius: var(--navix-radius-sm); font-weight: 600; }
+:focus-visible { outline: 3px solid var(--navix-orange); outline-offset: 2px; }
+
+.text-navix-muted { color: var(--navix-text-muted); }
+.section-title { font-weight: 800; color: var(--navix-navy); }
+
+footer.navix-footer {
+  background: var(--navix-navy);
+  color: #b9c6e0;
+  padding: 2rem 1rem;
+  margin-top: 3rem;
+  text-align: center;
+  font-size: 0.9rem;
+}

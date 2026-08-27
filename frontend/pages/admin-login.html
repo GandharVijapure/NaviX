@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>Control Room Login – NaviX</title>
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link href="/css/style.css" rel="stylesheet" />
+</head>
+<body style="background: var(--navix-navy);">
+  <div class="container d-flex align-items-center justify-content-center" style="min-height:100vh;">
+    <div class="navix-card p-4" style="max-width:420px; width:100%;">
+      <div class="text-center mb-3">
+        <div style="font-size:2.4rem;">🏛️</div>
+        <h3 class="section-title mb-0">NaviX Control Room</h3>
+        <p class="text-navix-muted small">Authorized personnel only — Police, Ambulance, Medical, Event Coordinators.</p>
+      </div>
+      <form id="loginForm">
+        <div class="mb-3">
+          <label class="fw-bold mb-1">Username</label>
+          <input name="username" required class="form-control" value="admin" />
+        </div>
+        <div class="mb-3">
+          <label class="fw-bold mb-1">Password</label>
+          <input name="password" type="password" required class="form-control" value="admin123" />
+        </div>
+        <button type="submit" class="btn btn-navix-primary w-100">Login</button>
+        <div id="loginError" class="text-danger small mt-2"></div>
+      </form>
+      <p class="text-navix-muted small mt-3 mb-0">Demo login pre-filled: <code>admin / admin123</code></p>
+      <a href="/" class="d-block text-center small mt-3">← Back to public site</a>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/auth.js"></script>
+  <script>
+    document.getElementById("loginForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      try {
+        const tokenOut = await NaviXApi.post("/api/auth/login", { username: fd.get("username"), password: fd.get("password") });
+        if (tokenOut.user.role !== "admin") throw new Error("This account doesn't have control-room access");
+        NaviXAuth.setSession(tokenOut);
+        window.location.href = "/admin/dashboard";
+      } catch (err) {
+        document.getElementById("loginError").textContent = err.message;
+      }
+    });
+  </script>
+</body>
+</html>

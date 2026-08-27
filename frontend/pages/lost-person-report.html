@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>Report Missing Person – NaviX</title>
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#0b2545" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link href="/css/style.css" rel="stylesheet" />
+</head>
+<body>
+  <div id="navix-navbar"></div>
+
+  <div class="container py-4" style="max-width:600px;">
+    <h2 class="section-title mb-3">Report a Missing Person</h2>
+    <p class="text-navix-muted">Fill in as much as you know. Even a partial report helps volunteers nearby start looking.</p>
+
+    <form id="reportForm" class="navix-card p-3 p-md-4">
+      <div class="mb-3">
+        <label class="fw-bold mb-1">Person's Name *</label>
+        <input name="name" required class="form-control" />
+      </div>
+      <div class="row g-2 mb-3">
+        <div class="col-6">
+          <label class="fw-bold mb-1">Approx. Age</label>
+          <input name="age" type="number" min="0" max="120" class="form-control" />
+        </div>
+        <div class="col-6">
+          <label class="fw-bold mb-1">Gender</label>
+          <select name="gender" class="form-select">
+            <option value="">Select</option>
+            <option>Male</option>
+            <option>Female</option>
+            <option>Other</option>
+          </select>
+        </div>
+      </div>
+      <div class="mb-3">
+        <label class="fw-bold mb-1">Photo</label>
+        <input name="photo" type="file" accept="image/*" class="form-control" />
+      </div>
+      <div class="mb-3">
+        <label class="fw-bold mb-1">Clothing Description</label>
+        <input name="clothing_description" class="form-control" placeholder="E.g. Green saree, carrying a cloth bag" />
+      </div>
+      <div class="mb-3">
+        <label class="fw-bold mb-1">Last Seen Location</label>
+        <input name="last_seen_location" class="form-control" placeholder="E.g. Near Main Ground, Gate 3" />
+        <button type="button" id="useMyLocationBtn" class="btn btn-sm btn-navix-outline mt-2" style="min-height:38px;">📍 Use my current location</button>
+        <div id="locHint" class="text-navix-muted small mt-1"></div>
+      </div>
+      <div class="mb-3">
+        <label class="fw-bold mb-1">Last Seen Time</label>
+        <input name="last_seen_time" type="datetime-local" class="form-control" />
+      </div>
+      <div class="mb-3">
+        <label class="fw-bold mb-1">Additional Description</label>
+        <textarea name="description" rows="3" class="form-control"></textarea>
+      </div>
+      <div class="mb-4">
+        <label class="fw-bold mb-1">Your Contact Number *</label>
+        <input name="contact" required class="form-control" placeholder="So volunteers can reach you" />
+      </div>
+
+      <button type="submit" class="btn btn-navix-danger w-100">Submit Report</button>
+      <div id="reportMsg" class="text-navix-muted small mt-2"></div>
+    </form>
+  </div>
+
+  <div id="navix-footer"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/auth.js"></script>
+  <script src="/js/i18n.js"></script>
+  <script src="/js/layout.js"></script>
+  <script src="/js/geo.js"></script>
+  <script src="/js/pwa-register.js"></script>
+  <script>
+    NaviXLayout.renderPublicNavbar("/lost-person");
+    NaviXLayout.renderFooter();
+
+    let lastSeenLoc = null;
+
+    document.getElementById("useMyLocationBtn").addEventListener("click", async () => {
+      lastSeenLoc = await NaviXGeo.getCurrentPosition();
+      document.getElementById("locHint").textContent = `Using ${lastSeenLoc.lat.toFixed(4)}, ${lastSeenLoc.lon.toFixed(4)}`;
+    });
+
+    document.getElementById("reportForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const form = e.target;
+      const submitBtn = form.querySelector("button[type=submit]");
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Submitting…";
+
+      const formData = new FormData(form);
+      if (!formData.get("photo") || formData.get("photo").size === 0) formData.delete("photo");
+      if (lastSeenLoc) {
+        formData.set("last_seen_latitude", lastSeenLoc.lat);
+        formData.set("last_seen_longitude", lastSeenLoc.lon);
+      }
+      if (formData.get("last_seen_time")) {
+        formData.set("last_seen_time", new Date(formData.get("last_seen_time")).toISOString());
+      }
+
+      try {
+        const person = await NaviXApi.postForm("/api/lost-persons", formData);
+        document.getElementById("reportMsg").innerHTML = `<span class="text-success fw-bold">Report submitted — reference LP-${person.id}. Redirecting…</span>`;
+        setTimeout(() => (window.location.href = "/lost-person"), 1400);
+      } catch (err) {
+        document.getElementById("reportMsg").innerHTML = `<span class="text-danger">Could not submit: ${err.message}</span>`;
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Submit Report";
+      }
+    });
+  </script>
+</body>
+</html>

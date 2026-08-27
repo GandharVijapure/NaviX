@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>Find Help – NaviX</title>
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#0b2545" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link href="/css/style.css" rel="stylesheet" />
+</head>
+<body>
+  <div id="navix-navbar"></div>
+
+  <div class="container py-4" style="max-width:720px;">
+    <h2 class="section-title mb-3">What do you need?</h2>
+
+    <div class="row g-3">
+      <div class="col-6 col-md-3">
+        <a href="/navigation?type=medical" class="big-action">
+          <span class="emoji">🚑</span><span data-i18n="action_medical">Medical Help</span>
+        </a>
+      </div>
+      <div class="col-6 col-md-3">
+        <a href="/navigation?type=police" class="big-action">
+          <span class="emoji">👮</span><span data-i18n="action_police">Police Help</span>
+        </a>
+      </div>
+      <div class="col-6 col-md-3">
+        <a href="/navigation?type=water" class="big-action">
+          <span class="emoji">💧</span><span data-i18n="action_food_water">Food &amp; Water</span>
+        </a>
+      </div>
+      <div class="col-6 col-md-3">
+        <a href="/sos" class="big-action sos">
+          <span class="emoji">🆘</span><span data-i18n="action_sos">Emergency SOS</span>
+        </a>
+      </div>
+    </div>
+
+    <h3 class="section-title mt-5 mb-3" data-i18n="nearby_facilities">Nearby Facilities</h3>
+    <div class="d-flex gap-2 flex-wrap mb-3" id="facilityFilters">
+      <button class="btn btn-sm btn-navix-outline active" data-type="" style="min-height:38px;">All</button>
+      <button class="btn btn-sm btn-navix-outline" data-type="medical" style="min-height:38px;">Medical</button>
+      <button class="btn btn-sm btn-navix-outline" data-type="police" style="min-height:38px;">Police</button>
+      <button class="btn btn-sm btn-navix-outline" data-type="water" style="min-height:38px;">Water</button>
+      <button class="btn btn-sm btn-navix-outline" data-type="food" style="min-height:38px;">Food</button>
+    </div>
+
+    <div id="facilityList" class="d-flex flex-column gap-2">
+      <p class="text-navix-muted">Locating you and loading nearby facilities…</p>
+    </div>
+  </div>
+
+  <div id="navix-footer"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/auth.js"></script>
+  <script src="/js/i18n.js"></script>
+  <script src="/js/layout.js"></script>
+  <script src="/js/geo.js"></script>
+  <script src="/js/map.js"></script>
+  <script src="/js/pwa-register.js"></script>
+  <script>
+    NaviXLayout.renderPublicNavbar("/find-help");
+    NaviXLayout.renderFooter();
+
+    let currentType = "";
+    let userLoc = null;
+
+    async function loadFacilities() {
+      const listEl = document.getElementById("facilityList");
+      try {
+        userLoc = userLoc || (await NaviXGeo.getCurrentPosition());
+        const query = new URLSearchParams({ lat: userLoc.lat, lon: userLoc.lon });
+        if (currentType) query.set("type", currentType);
+        const facilities = await NaviXApi.get(`/api/facilities/nearby?${query.toString()}`);
+        if (!facilities.length) {
+          listEl.innerHTML = `<p class="text-navix-muted">No facilities found nearby yet.</p>`;
+          return;
+        }
+        listEl.innerHTML = facilities
+          .map((f) => {
+            const distanceLabel = f.distance_km < 1 ? `${Math.round(f.distance_km * 1000)} m away` : `${f.distance_km.toFixed(1)} km away`;
+            return `
+            <div class="facility-card">
+              <div class="facility-icon ${f.type}">${NaviXMap.ICONS[f.type] || "📌"}</div>
+              <div class="flex-grow-1">
+                <div class="fw-bold">${f.name}</div>
+                <div class="text-navix-muted small">${NaviXMap.facilityTypeLabel(f.type)} · ${distanceLabel}</div>
+                ${NaviXMap.facilityStatusBadge(f.status)}
+              </div>
+              <a class="btn btn-sm btn-navix-primary" style="min-height:44px;" href="/navigation?facility=${f.id}" data-i18n="btn_navigate">Navigate</a>
+            </div>`;
+          })
+          .join("");
+      } catch (e) {
+        listEl.innerHTML = `<p class="text-navix-muted">Could not load facilities (offline or server unreachable). Showing cached data if available.</p>`;
+      }
+    }
+
+    document.getElementById("facilityFilters").addEventListener("click", (e) => {
+      const btn = e.target.closest("button[data-type]");
+      if (!btn) return;
+      document.querySelectorAll("#facilityFilters button").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      currentType = btn.getAttribute("data-type");
+      loadFacilities();
+    });
+
+    loadFacilities();
+  </script>
+</body>
+</html>

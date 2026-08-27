@@ -1,0 +1,14 @@
+{
+  "name": "NaviX – Connecting Every Step, Even Without Networks",
+  "short_name": "NaviX",
+  "description": "Emergency communication, navigation and coordination for large public gatherings.",
+  "start_url": "/find-help",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b2545",
+  "theme_color": "#0b2545",
+  "icons": [
+    { "src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

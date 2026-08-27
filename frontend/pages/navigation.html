@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>Navigation – NaviX</title>
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#0b2545" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link href="/css/style.css" rel="stylesheet" />
+</head>
+<body>
+  <div id="navix-navbar"></div>
+
+  <div class="container-fluid py-3">
+    <div class="row g-3">
+      <div class="col-lg-8">
+        <div id="map" class="navix-map tall"></div>
+      </div>
+      <div class="col-lg-4">
+        <div id="directionPanel" class="direction-panel mb-3" style="display:none;">
+          <div class="arrow" id="dirArrow">↑</div>
+          <div class="instruction" id="dirInstruction">Continue Straight</div>
+          <div class="distance" id="dirDistance">– m</div>
+          <div class="next-turn" id="dirNextTurn"></div>
+        </div>
+
+        <div class="navix-card p-3">
+          <h6 class="fw-bold mb-2">Select a facility</h6>
+          <div class="d-flex gap-2 flex-wrap mb-2" id="typeFilters">
+            <button class="btn btn-sm btn-navix-outline active" data-type="" style="min-height:36px;">All</button>
+            <button class="btn btn-sm btn-navix-outline" data-type="medical" style="min-height:36px;">🚑</button>
+            <button class="btn btn-sm btn-navix-outline" data-type="police" style="min-height:36px;">👮</button>
+            <button class="btn btn-sm btn-navix-outline" data-type="water" style="min-height:36px;">💧</button>
+            <button class="btn btn-sm btn-navix-outline" data-type="food" style="min-height:36px;">🍲</button>
+            <button class="btn btn-sm btn-navix-outline" data-type="help_centre" style="min-height:36px;">🛈</button>
+          </div>
+          <div id="facilityPicker" style="max-height:46vh; overflow-y:auto;" class="d-flex flex-column gap-2"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="navix-footer"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/auth.js"></script>
+  <script src="/js/i18n.js"></script>
+  <script src="/js/layout.js"></script>
+  <script src="/js/geo.js"></script>
+  <script src="/js/map.js"></script>
+  <script src="/js/ws.js"></script>
+  <script src="/js/pwa-register.js"></script>
+  <script>
+    NaviXLayout.renderPublicNavbar("/navigation");
+    NaviXLayout.renderFooter();
+    NaviXLayout.renderSosFab();
+
+    const params = new URLSearchParams(window.location.search);
+    let currentType = params.get("type") || "";
+    const requestedFacilityId = params.get("facility") ? Number(params.get("facility")) : null;
+
+    let map, userMarker, userLoc, facilityMarkers = [], selectedFacility = null, directionsTimer = null;
+
+    async function init() {
+      userLoc = await NaviXGeo.getCurrentPosition();
+      map = NaviXMap.initMap("map", userLoc, 15);
+      userMarker = L.marker([userLoc.lat, userLoc.lon], { icon: NaviXMap.divIcon("user", { size: 30 }) })
+        .addTo(map)
+        .bindPopup("You are here");
+      await loadFacilities();
+    }
+
+    async function loadFacilities() {
+      const query = new URLSearchParams({ lat: userLoc.lat, lon: userLoc.lon });
+      if (currentType) query.set("type", currentType);
+      let facilities = [];
+      try {
+        facilities = await NaviXApi.get(`/api/facilities/nearby?${query.toString()}`);
+      } catch (e) {
+        document.getElementById("facilityPicker").innerHTML = `<p class="text-navix-muted small">Offline — can't load facilities right now.</p>`;
+        return;
+      }
+
+      facilityMarkers.forEach((m) => map.removeLayer(m));
+      facilityMarkers = [];
+
+      const picker = document.getElementById("facilityPicker");
+      picker.innerHTML = "";
+
+      facilities.forEach((f) => {
+        const marker = L.marker([f.latitude, f.longitude], { icon: NaviXMap.divIcon(f.type) })
+          .addTo(map)
+          .bindPopup(`<strong>${f.name}</strong><br>${NaviXMap.facilityTypeLabel(f.type)}`);
+        marker.on("click", () => selectFacility(f));
+        facilityMarkers.push(marker);
+
+        const distanceLabel = f.distance_km < 1 ? `${Math.round(f.distance_km * 1000)} m` : `${f.distance_km.toFixed(1)} km`;
+        const row = document.createElement("button");
+        row.className = "facility-card text-start border-0 w-100";
+        row.style.cursor = "pointer";
+        row.innerHTML = `
+          <div class="facility-icon ${f.type}">${NaviXMap.ICONS[f.type] || "📌"}</div>
+          <div class="flex-grow-1">
+            <div class="fw-bold">${f.name}</div>
+            <div class="text-navix-muted small">${distanceLabel} away</div>
+          </div>`;
+        row.addEventListener("click", () => selectFacility(f, marker));
+        picker.appendChild(row);
+
+        if (requestedFacilityId && f.id === requestedFacilityId) selectFacility(f, marker);
+      });
+
+      if (!selectedFacility && facilities.length) selectFacility(facilities[0], facilityMarkers[0]);
+    }
+
+    function selectFacility(facility, marker) {
+      selectedFacility = facility;
+      map.setView([facility.latitude, facility.longitude], 16);
+      if (marker) marker.openPopup();
+      refreshDirections();
+      if (directionsTimer) clearInterval(directionsTimer);
+      directionsTimer = setInterval(refreshDirections, 8000);
+    }
+
+    async function refreshDirections() {
+      if (!selectedFacility) return;
+      try {
+        const dir = await NaviXApi.get(
+          `/api/navigation/to-facility/${selectedFacility.id}?user_lat=${userLoc.lat}&user_lon=${userLoc.lon}`
+        );
+        document.getElementById("directionPanel").style.display = "block";
+        const arrows = { N: "↑", NE: "↗", E: "→", SE: "↘", S: "↓", SW: "↙", W: "←", NW: "↖" };
+        document.getElementById("dirArrow").textContent = arrows[dir.compass_direction] || "↑";
+        document.getElementById("dirInstruction").textContent = dir.turn_hint;
+        document.getElementById("dirDistance").textContent =
+          dir.distance_m < 1000 ? `${Math.round(dir.distance_m)} m` : `${dir.distance_km.toFixed(1)} km`;
+        document.getElementById("dirNextTurn").textContent = `Heading ${dir.compass_direction} · ~${dir.estimated_walk_minutes} min walk to ${selectedFacility.name}`;
+      } catch (e) {
+        /* offline -- keep last known panel state */
+      }
+    }
+
+    document.getElementById("typeFilters").addEventListener("click", (e) => {
+      const btn = e.target.closest("button[data-type]");
+      if (!btn) return;
+      document.querySelectorAll("#typeFilters button").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      currentType = btn.getAttribute("data-type");
+      loadFacilities();
+    });
+
+    NaviXSocket.on("facility_update", loadFacilities);
+
+    init();
+  </script>
+</body>
+</html>

@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>Lost Person – NaviX</title>
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#0b2545" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link href="/css/style.css" rel="stylesheet" />
+</head>
+<body>
+  <div id="navix-navbar"></div>
+
+  <div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+      <h2 class="section-title mb-0" data-i18n="nav_lost_person">Lost Person</h2>
+      <a href="/lost-person/report" class="btn btn-navix-danger">➕ Report Missing Person</a>
+    </div>
+
+    <div class="row g-2 mb-3">
+      <div class="col-md-6">
+        <input id="searchBox" class="form-control" placeholder="Search by name…" />
+      </div>
+      <div class="col-md-6">
+        <select id="statusFilter" class="form-select">
+          <option value="">All statuses</option>
+          <option value="missing">Missing</option>
+          <option value="possible_match">Possible Match</option>
+          <option value="found">Found</option>
+          <option value="reunited">Reunited</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="lostPersonList" class="row g-3">
+      <p class="text-navix-muted">Loading reports…</p>
+    </div>
+  </div>
+
+  <div id="navix-footer"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/auth.js"></script>
+  <script src="/js/i18n.js"></script>
+  <script src="/js/layout.js"></script>
+  <script src="/js/ws.js"></script>
+  <script src="/js/pwa-register.js"></script>
+  <script>
+    NaviXLayout.renderPublicNavbar("/lost-person");
+    NaviXLayout.renderFooter();
+    NaviXLayout.renderSosFab();
+
+    function card(p) {
+      const photo = p.photo
+        ? `<img src="${p.photo}" class="w-100" style="height:170px; object-fit:cover; border-radius:14px 14px 0 0;">`
+        : `<div class="d-flex align-items-center justify-content-center bg-light" style="height:170px; border-radius:14px 14px 0 0; font-size:3rem;">🧑</div>`;
+      return `
+      <div class="col-sm-6 col-lg-4">
+        <div class="navix-card overflow-hidden h-100">
+          ${photo}
+          <div class="p-3">
+            <div class="d-flex justify-content-between align-items-start">
+              <div class="fw-bold">${p.name}</div>
+              <span class="status-pill ${p.status}">${p.status.replace("_", " ")}</span>
+            </div>
+            <div class="text-navix-muted small">${p.age ? p.age + " yrs · " : ""}${p.gender || ""}</div>
+            <div class="text-navix-muted small mt-1">📍 ${p.last_seen_location || "Location unknown"}</div>
+            ${p.clothing_description ? `<div class="small mt-1">👕 ${p.clothing_description}</div>` : ""}
+            ${p.contact ? `<div class="small mt-2">📞 <a href="tel:${p.contact}">${p.contact}</a></div>` : ""}
+          </div>
+        </div>
+      </div>`;
+    }
+
+    async function load() {
+      const listEl = document.getElementById("lostPersonList");
+      const search = document.getElementById("searchBox").value.trim();
+      const status = document.getElementById("statusFilter").value;
+      const query = new URLSearchParams();
+      if (search) query.set("search", search);
+      if (status) query.set("status", status);
+      try {
+        const people = await NaviXApi.get(`/api/lost-persons?${query.toString()}`);
+        listEl.innerHTML = people.length ? people.map(card).join("") : `<p class="text-navix-muted">No reports match.</p>`;
+      } catch (e) {
+        listEl.innerHTML = `<p class="text-navix-muted">Could not load reports (offline).</p>`;
+      }
+    }
+
+    let debounceTimer;
+    document.getElementById("searchBox").addEventListener("input", () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(load, 300);
+    });
+    document.getElementById("statusFilter").addEventListener("change", load);
+    NaviXSocket.on("lost_person_update", load);
+
+    load();
+  </script>
+</body>
+</html>

@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>Hardware Simulator – NaviX</title>
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link href="/css/style.css" rel="stylesheet" />
+</head>
+<body>
+  <nav class="navbar navix-navbar">
+    <div class="container-fluid px-3 px-lg-4">
+      <a class="navbar-brand" href="/">NaviX<small>Developer / Hardware Simulator</small></a>
+      <a href="/admin/dashboard" class="btn btn-sm btn-navix-outline" style="min-height:38px;">← Control Room</a>
+    </div>
+  </nav>
+
+  <div class="container py-4">
+    <div class="navix-card p-3 mb-4">
+      <h5 class="fw-bold mb-1">🛠️ Hardware / ESP32 + LoRa Simulator</h5>
+      <p class="text-navix-muted small mb-3">
+        This page stands in for real ESP32 + SX1278 LoRa + GPS field devices. It calls the exact same
+        <code>/api/device/*</code> endpoints a real base station would use, so nothing changes on the backend
+        when the physical hardware is connected later.
+      </p>
+      <div class="d-flex gap-2 flex-wrap">
+        <button id="simStartBtn" class="btn btn-navix-primary">▶ Start NaviX Simulation (auto-move all volunteers)</button>
+        <button id="simStopBtn" class="btn btn-navix-outline">⏸ Stop Simulation</button>
+        <span id="simStatus" class="align-self-center text-navix-muted small"></span>
+      </div>
+    </div>
+
+    <div class="row g-3">
+      <div class="col-md-6">
+        <div class="navix-card p-3">
+          <h6 class="fw-bold mb-2">📍 Simulate GPS Update</h6>
+          <form id="locationForm">
+            <div class="mb-2"><input name="device_id" required class="form-control" placeholder="Device ID (e.g. NVX-001)" value="NVX-001" /></div>
+            <div class="row g-2 mb-2">
+              <div class="col-6"><input name="latitude" type="number" step="any" required class="form-control" placeholder="Latitude" value="18.5204" /></div>
+              <div class="col-6"><input name="longitude" type="number" step="any" required class="form-control" placeholder="Longitude" value="73.8567" /></div>
+            </div>
+            <div class="mb-2"><input name="battery" type="number" min="0" max="100" class="form-control" placeholder="Battery %" value="82" /></div>
+            <button class="btn btn-navix-primary w-100">Send Location</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="col-md-6">
+        <div class="navix-card p-3">
+          <h6 class="fw-bold mb-2">🆘 Simulate SOS Signal</h6>
+          <form id="sosForm">
+            <div class="mb-2"><input name="device_id" required class="form-control" placeholder="Device ID" value="NVX-002" /></div>
+            <div class="mb-2">
+              <select name="emergency_type" class="form-select">
+                <option value="medical">Medical</option>
+                <option value="police">Police</option>
+                <option value="lost_person">Lost Person</option>
+                <option value="crowd">Crowd</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div class="row g-2 mb-2">
+              <div class="col-6"><input name="latitude" type="number" step="any" required class="form-control" placeholder="Latitude" value="18.521" /></div>
+              <div class="col-6"><input name="longitude" type="number" step="any" required class="form-control" placeholder="Longitude" value="73.857" /></div>
+            </div>
+            <div class="mb-2"><input name="description" class="form-control" placeholder="Description" /></div>
+            <button class="btn btn-navix-danger w-100">Trigger SOS</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="col-md-6">
+        <div class="navix-card p-3">
+          <h6 class="fw-bold mb-2">🔌 Simulate Device Online / Offline</h6>
+          <form id="statusForm">
+            <div class="mb-2"><input name="device_id" required class="form-control" placeholder="Device ID" value="NVX-003" /></div>
+            <div class="mb-2">
+              <select name="status" class="form-select">
+                <option value="online">Online</option>
+                <option value="offline">Offline</option>
+              </select>
+            </div>
+            <div class="mb-2"><input name="battery" type="number" min="0" max="100" class="form-control" placeholder="Battery %" value="60" /></div>
+            <button class="btn btn-navix-primary w-100">Send Status</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="col-md-6">
+        <div class="navix-card p-3">
+          <h6 class="fw-bold mb-2">💓 Simulate Heartbeat</h6>
+          <form id="heartbeatForm">
+            <div class="mb-2"><input name="device_id" required class="form-control" placeholder="Device ID" value="NVX-004" /></div>
+            <div class="mb-2"><input name="battery" type="number" min="0" max="100" class="form-control" placeholder="Battery %" value="95" /></div>
+            <button class="btn btn-navix-primary w-100">Send Heartbeat</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="navix-card p-3 mt-4">
+      <h6 class="fw-bold mb-2">Activity Log</h6>
+      <div id="log" class="small" style="max-height:240px; overflow-y:auto; font-family: monospace;"></div>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/auth.js"></script>
+  <script>
+    function logLine(text, ok = true) {
+      const el = document.getElementById("log");
+      const row = document.createElement("div");
+      row.className = ok ? "text-success" : "text-danger";
+      row.textContent = `[${new Date().toLocaleTimeString()}] ${text}`;
+      el.prepend(row);
+    }
+
+    async function submitForm(form, path, mapFields) {
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const fd = new FormData(form);
+        const payload = {};
+        for (const [k, v] of fd.entries()) {
+          if (v === "") continue;
+          payload[k] = ["latitude", "longitude"].includes(k) ? parseFloat(v) : k === "battery" ? parseInt(v) : v;
+        }
+        try {
+          const result = await NaviXApi.post(path, payload);
+          logLine(`POST ${path} → OK: ${JSON.stringify(result).slice(0, 140)}`);
+        } catch (err) {
+          logLine(`POST ${path} → FAILED: ${err.message}`, false);
+        }
+      });
+    }
+
+    submitForm(document.getElementById("locationForm"), "/api/device/location");
+    submitForm(document.getElementById("sosForm"), "/api/device/sos");
+    submitForm(document.getElementById("statusForm"), "/api/device/status");
+    submitForm(document.getElementById("heartbeatForm"), "/api/device/heartbeat");
+
+    async function refreshSimStatus() {
+      try {
+        const s = await NaviXApi.get("/api/admin/simulation/status");
+        document.getElementById("simStatus").textContent = s.running ? "● Simulation running" : "○ Simulation stopped";
+      } catch (e) {
+        /* ignore */
+      }
+    }
+
+    document.getElementById("simStartBtn").addEventListener("click", async () => {
+      await NaviXApi.post("/api/admin/simulation/start");
+      logLine("Simulation started — volunteer positions will drift automatically.");
+      refreshSimStatus();
+    });
+    document.getElementById("simStopBtn").addEventListener("click", async () => {
+      await NaviXApi.post("/api/admin/simulation/stop");
+      logLine("Simulation stopped.");
+      refreshSimStatus();
+    });
+
+    refreshSimStatus();
+  </script>
+</body>
+</html>
