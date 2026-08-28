@@ -16,24 +16,24 @@
       <div id="navix-admin-topbar"></div>
 
       <div class="row g-3 mb-3">
-        <div class="col-6 col-md-4 col-xl-2"><div class="stat-card danger"><div class="stat-value" id="statActiveSos">–</div><div class="stat-label">Active SOS</div></div></div>
-        <div class="col-6 col-md-4 col-xl-2"><div class="stat-card danger"><div class="stat-value" id="statCriticalSos">–</div><div class="stat-label">Critical SOS</div></div></div>
-        <div class="col-6 col-md-4 col-xl-2"><div class="stat-card success"><div class="stat-value" id="statVolunteers">–</div><div class="stat-label">Volunteers Online</div></div></div>
-        <div class="col-6 col-md-4 col-xl-2"><div class="stat-card"><div class="stat-value" id="statDevices">–</div><div class="stat-label">Devices Online</div></div></div>
-        <div class="col-6 col-md-4 col-xl-2"><div class="stat-card"><div class="stat-value" id="statLoraNodes">–</div><div class="stat-label">LoRa Nodes Online</div></div></div>
-        <div class="col-6 col-md-4 col-xl-2"><div class="stat-card"><div class="stat-value" id="statGateways">–</div><div class="stat-label">Gateways Online</div></div></div>
-        <div class="col-6 col-md-4 col-xl-2"><div class="stat-card orange"><div class="stat-value" id="statMedical">–</div><div class="stat-label">Medical Cases</div></div></div>
-        <div class="col-6 col-md-4 col-xl-2"><div class="stat-card"><div class="stat-value" id="statMissing">–</div><div class="stat-label">Missing Reports</div></div></div>
-        <div class="col-6 col-md-4 col-xl-2"><div class="stat-card"><div class="stat-value" id="statAlerts">–</div><div class="stat-label">Active Alerts</div></div></div>
-        <div class="col-6 col-md-4 col-xl-2"><div class="stat-card success"><div class="stat-value" id="statOpenFacilities">–</div><div class="stat-label">Open Facilities</div></div></div>
+        <div class="col-6 col-md-4 col-xl-2"><a href="/admin/emergencies?quick=active" class="stat-card-link"><div class="stat-card danger"><div class="stat-value" id="statActiveSos">–</div><div class="stat-label">Active SOS</div></div></a></div>
+        <div class="col-6 col-md-4 col-xl-2"><a href="/admin/emergencies?quick=critical" class="stat-card-link"><div class="stat-card danger"><div class="stat-value" id="statCriticalSos">–</div><div class="stat-label">Critical SOS</div></div></a></div>
+        <div class="col-6 col-md-4 col-xl-2"><a href="/admin/volunteers" class="stat-card-link"><div class="stat-card success"><div class="stat-value" id="statVolunteers">–</div><div class="stat-label">Volunteers Online</div></div></a></div>
+        <div class="col-6 col-md-4 col-xl-2"><a href="/admin/devices" class="stat-card-link"><div class="stat-card"><div class="stat-value" id="statDevices">–</div><div class="stat-label">Devices Online</div></div></a></div>
+        <div class="col-6 col-md-4 col-xl-2"><a href="/admin/devices" class="stat-card-link"><div class="stat-card"><div class="stat-value" id="statLoraNodes">–</div><div class="stat-label">LoRa Nodes Online</div></div></a></div>
+        <div class="col-6 col-md-4 col-xl-2"><a href="/admin/gateways" class="stat-card-link"><div class="stat-card"><div class="stat-value" id="statGateways">–</div><div class="stat-label">Gateways Online</div></div></a></div>
+        <div class="col-6 col-md-4 col-xl-2"><a href="/admin/emergencies?quick=medical" class="stat-card-link"><div class="stat-card orange"><div class="stat-value" id="statMedical">–</div><div class="stat-label">Medical Cases</div></div></a></div>
+        <div class="col-6 col-md-4 col-xl-2"><a href="/admin/lost-persons" class="stat-card-link"><div class="stat-card"><div class="stat-value" id="statMissing">–</div><div class="stat-label">Missing Reports</div></div></a></div>
+        <div class="col-6 col-md-4 col-xl-2"><a href="/admin/announcements" class="stat-card-link"><div class="stat-card"><div class="stat-value" id="statAlerts">–</div><div class="stat-label">Active Alerts</div></div></a></div>
+        <div class="col-6 col-md-4 col-xl-2"><a href="/admin/facilities" class="stat-card-link"><div class="stat-card success"><div class="stat-value" id="statOpenFacilities">–</div><div class="stat-label">Open Facilities</div></div></a></div>
       </div>
 
       <div class="navix-card p-2 mb-3">
         <div class="d-flex justify-content-between align-items-center px-2 pt-1">
           <h6 class="fw-bold mb-2">Live Map</h6>
           <div class="d-flex gap-2">
-            <button id="simStartBtn" class="btn btn-sm btn-navix-primary" style="min-height:36px;">▶ Start NaviX Simulation</button>
-            <button id="simStopBtn" class="btn btn-sm btn-navix-outline" style="min-height:36px;">⏸ Stop</button>
+            <button id="simStartBtn" class="btn btn-sm btn-navix-primary" style="min-height:36px;" disabled title="Disabled by control-room operator — control room now reflects real submissions only">▶ Start NaviX Simulation</button>
+            <button id="simStopBtn" class="btn btn-sm btn-navix-outline" style="min-height:36px;" disabled title="Disabled by control-room operator — control room now reflects real submissions only">⏸ Stop</button>
           </div>
         </div>
         <div id="map" class="navix-map"></div>

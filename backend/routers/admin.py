@@ -109,17 +109,18 @@ async def start_simulation():
     simulator page so it's easy to demo without a login step in the way.
     Must run as `async def` (not sync `def`) so it executes directly on the
     main event loop -- asyncio.create_task() requires a running loop, which
-    a sync endpoint (run in FastAPI's worker threadpool) doesn't have."""
+    a sync endpoint (run in FastAPI's worker threadpool) doesn't have.
+    Currently a permanent no-op -- see simulator.DISABLED."""
     started = simulator.start()
-    return {"running": True, "already_running": not started}
+    return {"running": False, "already_running": not started, "disabled": simulator.DISABLED}
 
 
 @router.post("/simulation/stop")
 async def stop_simulation():
     stopped = simulator.stop()
-    return {"running": False, "was_running": stopped}
+    return {"running": False, "was_running": stopped, "disabled": simulator.DISABLED}
 
 
 @router.get("/simulation/status")
 def simulation_status():
-    return {"running": simulator.is_running()}
+    return {"running": simulator.is_running(), "disabled": simulator.DISABLED}

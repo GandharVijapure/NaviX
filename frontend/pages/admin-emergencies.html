@@ -30,6 +30,7 @@
                 <option value="DUPLICATE">Duplicate</option>
               </select>
             </div>
+            <div id="quickFilterBanner" class="d-none alert alert-secondary py-2 px-3 mb-2 d-flex justify-content-between align-items-center small"></div>
             <div class="table-responsive">
               <table class="table align-middle mb-0">
                 <thead><tr><th>ID</th><th>Type</th><th>Priority</th><th>Source</th><th>Reported</th><th>Status</th><th></th></tr></thead>
@@ -63,8 +64,36 @@
       companion_app: "Companion App", volunteer_device: "Volunteer Device",
       lora_gateway: "LoRa Gateway", control_room: "Control Room", simulator: "Simulator",
     };
-    const focusId = Number(new URLSearchParams(window.location.search).get("focus")) || null;
+    const urlParams = new URLSearchParams(window.location.search);
+    const focusId = Number(urlParams.get("focus")) || null;
     let selectedId = focusId;
+
+    // Quick filters coming from the dashboard stat cards -- these mirror the
+    // exact definitions /api/admin/stats uses (see backend/routers/admin.py)
+    // so "click the card, see those records" always matches the number shown.
+    let quickFilter = urlParams.get("quick");
+    const QUICK_FILTERS = {
+      active: { label: "Active SOS", test: (e) => e.status !== "RESOLVED" },
+      critical: { label: "Critical SOS", test: (e) => e.status !== "RESOLVED" && e.priority === "critical" },
+      medical: { label: "Medical Cases", test: (e) => e.status !== "RESOLVED" && e.type === "medical" },
+    };
+
+    function renderQuickFilterBanner() {
+      const banner = document.getElementById("quickFilterBanner");
+      const def = QUICK_FILTERS[quickFilter];
+      if (!def) {
+        banner.classList.add("d-none");
+        return;
+      }
+      banner.classList.remove("d-none");
+      banner.innerHTML = `<span>Showing: <strong>${def.label}</strong> (from dashboard)</span><button class="btn btn-sm btn-navix-outline" id="clearQuickFilter">Clear</button>`;
+      document.getElementById("clearQuickFilter").addEventListener("click", () => {
+        quickFilter = null;
+        history.replaceState(null, "", "/admin/emergencies");
+        renderQuickFilterBanner();
+        loadRows();
+      });
+    }
 
     function timeAgo(iso) {
       const diffMin = Math.max(0, Math.round((Date.now() - new Date(iso + "Z")) / 60000));
@@ -78,7 +107,9 @@
 
     async function loadRows() {
       const status = document.getElementById("statusFilter").value;
-      const emergencies = await NaviXApi.get(`/api/emergencies${status ? "?status=" + status : ""}`);
+      let emergencies = await NaviXApi.get(`/api/emergencies${status ? "?status=" + status : ""}`);
+      const quickDef = QUICK_FILTERS[quickFilter];
+      if (quickDef) emergencies = emergencies.filter(quickDef.test);
       document.getElementById("rows").innerHTML = emergencies
         .map(
           (e) => `<tr style="cursor:pointer;" data-id="${e.id}" class="${e.id === selectedId ? 'table-active' : ''}">
@@ -210,6 +241,7 @@
     NaviXSocket.on("emergency_created", loadRows);
     NaviXSocket.on("emergency_updated", loadRows);
 
+    renderQuickFilterBanner();
     loadRows();
   </script>
 </body>

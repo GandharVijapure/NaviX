@@ -112,7 +112,21 @@ startup — simple for this project's scope, but structured so Alembic migration
 later without a rewrite. **If you pull a schema change, delete `navix.db` and restart** — the
 app never silently drops/migrates data, it only creates missing tables.
 
-## Installation
+## Quick Start (Windows, one command)
+
+```bat
+start.bat
+```
+
+Double-click it in Explorer, or run it from any shell (PowerShell/cmd). First run
+creates `venv` and installs `requirements.txt` automatically (only once); every run
+after that just starts the server. Frontend and backend are already one integrated
+app — FastAPI serves the HTML/CSS/JS pages *and* the API *and* the WebSocket from a
+single process/port, so starting this one script starts the whole thing, reachable
+at `http://127.0.0.1:8000` and from other devices on your LAN at
+`http://<this-PC's-IPv4>:8000`. Press `CTRL+C` to stop.
+
+## Manual Installation
 
 ```bash
 python -m venv venv

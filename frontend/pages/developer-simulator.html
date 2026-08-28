@@ -26,10 +26,11 @@
         when the physical hardware is connected later.
       </p>
       <div class="d-flex gap-2 flex-wrap">
-        <button id="simStartBtn" class="btn btn-navix-primary">▶ Start NaviX Simulation (auto-move all volunteers)</button>
-        <button id="simStopBtn" class="btn btn-navix-outline">⏸ Stop Simulation</button>
+        <button id="simStartBtn" class="btn btn-navix-primary" disabled title="Disabled by control-room operator — see backend/simulator.py DISABLED">▶ Start NaviX Simulation (auto-move all volunteers)</button>
+        <button id="simStopBtn" class="btn btn-navix-outline" disabled title="Disabled by control-room operator — see backend/simulator.py DISABLED">⏸ Stop Simulation</button>
         <span id="simStatus" class="align-self-center text-navix-muted small"></span>
       </div>
+      <p class="text-navix-muted small mb-0 mt-2">Auto-simulation is disabled — the control room now reflects only real submissions (via the forms below, or real device/gateway traffic).</p>
     </div>
 
     <div class="row g-3">

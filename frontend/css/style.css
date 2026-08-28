@@ -163,6 +163,19 @@ a { color: var(--navix-blue); }
 .stat-card.success { border-left-color: var(--navix-success); }
 .stat-card.orange { border-left-color: var(--navix-orange); }
 
+/* Stat cards that link to a detail page (see admin-dashboard.html) --
+   keep the exact look of a plain .stat-card but signal clickability. */
+a.stat-card-link {
+  display: block;
+  text-decoration: none;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+a.stat-card-link:hover, a.stat-card-link:focus-visible {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.12);
+}
+a.stat-card-link:hover .stat-value { color: var(--navix-blue); }
+
 /* Facility / lost-person cards */
 .facility-card, .lost-person-card {
   background: var(--navix-card-bg);

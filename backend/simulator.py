@@ -7,6 +7,11 @@ channel real hardware updates would use, so the control-room dashboard
 updates identically either way.
 
 Started/stopped via POST /api/admin/simulation/start|stop (see main.py).
+
+DISABLED (operator decision): the control room is meant to reflect only
+real submissions now, not auto-generated demo noise. `start()` is a
+permanent no-op below -- flip DISABLED back to False to re-enable it for a
+future demo session.
 """
 import asyncio
 import logging
@@ -25,6 +30,14 @@ logger = logging.getLogger("navix.simulator")
 TICK_SECONDS = 3
 STEP_DEGREES = 0.0006  # small GPS jitter per tick, keeps movement visible but local
 RANDOM_EMERGENCY_CHANCE = 0.04  # per volunteer, per tick
+# Safety cap: without this, a long-running demo session accumulates simulated
+# emergencies forever (nothing auto-resolves them), eventually burying the
+# dashboard's Active SOS count under thousands of fake entries. Once this many
+# simulator-sourced emergencies are still unresolved, the tick stops minting
+# new ones until an operator resolves some (or real submissions come in).
+MAX_ACTIVE_SIMULATED_EMERGENCIES = 15
+
+DISABLED = True  # see module docstring
 
 _task: asyncio.Task | None = None
 _running = False
@@ -36,6 +49,10 @@ def is_running() -> bool:
 
 async def _tick(db: Session) -> None:
     volunteers = db.query(Volunteer).filter(Volunteer.status != "offline").all()
+    active_simulated = db.query(Emergency).filter(
+        Emergency.source == EmergencySource.simulator,
+        Emergency.status != EmergencyStatus.resolved,
+    ).count()
     for volunteer in volunteers:
         volunteer.latitude = round(volunteer.latitude + random.uniform(-STEP_DEGREES, STEP_DEGREES), 6)
         volunteer.longitude = round(volunteer.longitude + random.uniform(-STEP_DEGREES, STEP_DEGREES), 6)
@@ -62,7 +79,7 @@ async def _tick(db: Session) -> None:
                 db.refresh(device)
                 await notify_device_updated(schemas.DeviceOut.model_validate(device).model_dump())
 
-        if random.random() < RANDOM_EMERGENCY_CHANCE:
+        if active_simulated < MAX_ACTIVE_SIMULATED_EMERGENCIES and random.random() < RANDOM_EMERGENCY_CHANCE:
             emergency = Emergency(
                 type=random.choice(list(EmergencyType)),
                 latitude=volunteer.latitude,
@@ -75,6 +92,7 @@ async def _tick(db: Session) -> None:
             db.add(emergency)
             db.commit()
             db.refresh(emergency)
+            active_simulated += 1
             await notify_sos_created(schemas.EmergencyOut.model_validate(emergency).model_dump())
 
     # Gateway heartbeat -- keeps GW-01 (seeded) looking alive while demo
@@ -110,8 +128,11 @@ async def _run_loop() -> None:
 
 
 def start() -> bool:
-    """Returns True if it was (re)started, False if already running."""
+    """Returns True if it was (re)started, False if already running or disabled."""
     global _task
+    if DISABLED:
+        logger.info("Simulator start requested but simulator is disabled -- ignoring")
+        return False
     if _running:
         return False
     _task = asyncio.create_task(_run_loop())
